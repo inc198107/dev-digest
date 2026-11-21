@@ -19,6 +19,7 @@
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
+- 2026-11-21 · scripts/e2e.sh · Check `e2e/node_modules` and a global `agent-browser` BEFORE running the script — it boots Postgres + API + web (~1 min) and only then runs `cd e2e && npm test`, which fails with `"tsx" is not recognized as an internal or external command` (garbled cp866 on a RU-locale console) when e2e deps are missing; fix: `cd e2e && npm install`, plus `npm i -g agent-browser && agent-browser install`.
 
 ## Session Notes
 <!-- Dated session summaries: what was done, what was learned. -->

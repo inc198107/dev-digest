@@ -66,6 +66,9 @@ export function useDeleteRun(prId: string | null | undefined) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      /** The run may have been part of the latest review batch the PR list's Cost column sums;
+       *  the hook has no repoId, so refresh every cached PR list by prefix. */
+      qc.invalidateQueries({ queryKey: ["pulls"] });
     },
   });
 }

@@ -56,6 +56,8 @@ export default function PRDetailPage() {
   const invalidateRunHistory = () => {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
+  /** The PR list's Cost column sums the latest review batch — refresh it once a run settles. */
+  const invalidatePullsList = () => qc.invalidateQueries({ queryKey: ["pulls", repoId] });
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
@@ -156,6 +158,7 @@ export default function PRDetailPage() {
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
+              invalidatePullsList();
               refetchReviews();
             }}
           />

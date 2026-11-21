@@ -50,6 +50,8 @@ cd reviewer-core && npm test && npm run typecheck
 - Secrets only through `SecretsProvider`; `~/.devdigest/secrets.json` overrides `.env`.
   Never read API keys from `process.env` or store them in AppConfig or the DB.
 - DB-backed tests must be named `*.it.test.ts`; everything else must stay hermetic.
+- Commit messages follow commitlint `@commitlint/config-conventional`:
+  `type(scope?): subject`, lowercase type, no trailing period, header ≤ 100 chars.
 
 ## Gotchas
 - The server does NOT migrate on boot. `pnpm db:seed` is mandatory, not optional: the

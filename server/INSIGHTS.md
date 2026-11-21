@@ -14,15 +14,21 @@
 
 ## Codebase Patterns
 <!-- Conventions and architectural decisions not stated in CLAUDE.md or README.md. -->
+- 2026-11-21 · src/modules/reviews/run-executor.ts:213, migration 0009 · Treat the missing run cost as intentional, not a bug: reviewer-core already returns `ReviewOutcome.costUsd` (OpenRouter `usage.cost`, else `PriceBook.estimate`), but the server drops it here because commit `d45ab0d` removed `agent_runs.cost_usd` for the M1 "Run cost badge" lab — `git show d45ab0d --stat` lists every touchpoint.
+- 2026-11-21 · src/modules/reviews/repository.ts · When adding a field to `createAgentRun` / `completeAgentRun`, edit the inline `values` type in both the facade `repository.ts` and `repository/run.repo.ts` — the facade re-declares the type instead of deriving it from runRepo.
 
 ## Tool & Library Notes
 <!-- Dependency quirks: versions, flags, platform issues. -->
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
+- 2026-11-21 · `pnpm dev` (tsx watch) · Do not `git stash` in this tree while the dev API runs, or `touch src/server.ts` afterwards — `tsx watch` restarted on the stashed (old) sources and did not restart again after `stash pop`, so the API silently served old code (symptom: responses lacked the new `cost_usd` field); after pulling a schema change also run `pnpm db:migrate`, or the reloaded API fails on the missing columns.
+- 2026-11-21 · test/indexer-pipeline.test.ts · On Windows expect 6 failures in `runIncremental` with `ENOENT … repo-intel-inc-*\src\a.ts` and do not chase them as a regression — they reproduce with every change stashed; the `writeFileAt` helper finds the parent dir via `lastIndexOf('/')`, so `mkdir` is skipped for backslash paths.
 
 ## Session Notes
 <!-- Dated session summaries: what was done, what was learned. -->
+- 2026-11-21 · run cost (M1) · Implemented on branch `feat/run-cost` (spec `specs/run-cost.md`): `agent_runs.cost_usd` + `batch_id` (migration `0010_handy_morg`), PR-list Cost = sum of the latest review batch via `modules/pulls/cost.ts` + `modules/pulls/repository.ts`; reserved `multi_agent_runs` belongs to N4 Multi-Agent and is not reused. (replaces 2026-11-21: "Plan drafted, not yet approved" — plan approved and implemented this session)
 
 ## Open Questions
 <!-- What is still unclear. -->
+- 2026-11-21 · src/modules/reviews/routes.ts `GET /runs/:id/trace` · Should the trace lookup be workspace-scoped? The handler calls `getContext` but discards it, and `getRunTrace(runId)` selects by run id only, unlike `listRunsForPull` / `deleteAgentRun` — harmless under the single-workspace no-auth provider, a cross-workspace read once auth exists.

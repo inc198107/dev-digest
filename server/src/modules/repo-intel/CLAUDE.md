@@ -41,4 +41,4 @@ facade methods, routes). Server-wide rules: `../../../CLAUDE.md`.
 - You change the tables → `../../db/schema/repo-intel.ts`, then `pnpm db:generate`
 
 ## After you finish
-Append lessons to `INSIGHTS.md` in this folder (append-only, fixed sections).
+Record lessons in `INSIGHTS.md` in this folder with the `engineering-insights` skill (`/engineering-insights`).

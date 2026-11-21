@@ -59,4 +59,4 @@ pnpm exec vitest run .it.test                     # integration (testcontainers,
 - You need a deep dive or a feature spec → `docs/`, `specs/` (template: `../specs/_TEMPLATE.md`)
 
 ## After you finish
-Append lessons to `server/INSIGHTS.md` (append-only, fixed sections).
+Record lessons in `server/INSIGHTS.md` with the `engineering-insights` skill (`/engineering-insights`).

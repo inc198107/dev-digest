@@ -42,4 +42,4 @@ cd e2e && npm run typecheck
 - You need a deep dive or a feature spec → `docs/`, `specs/` (template: `../specs/_TEMPLATE.md`)
 
 ## After you finish
-Append lessons to `e2e/INSIGHTS.md` (append-only, fixed sections).
+Record lessons in `e2e/INSIGHTS.md` with the `engineering-insights` skill (`/engineering-insights`).

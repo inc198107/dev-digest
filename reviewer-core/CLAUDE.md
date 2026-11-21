@@ -48,4 +48,4 @@ npm run typecheck   # this is also the "build": the package never emits JS
 - You need a deep dive or a feature spec → `docs/`, `specs/` (template: `../specs/_TEMPLATE.md`)
 
 ## After you finish
-Append lessons to `reviewer-core/INSIGHTS.md` (append-only, fixed sections).
+Record lessons in `reviewer-core/INSIGHTS.md` with the `engineering-insights` skill (`/engineering-insights`).

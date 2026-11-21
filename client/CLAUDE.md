@@ -53,4 +53,4 @@ pnpm typecheck
 - You need a deep dive or a feature spec → `docs/`, `specs/` (template: `../specs/_TEMPLATE.md`)
 
 ## After you finish
-Append lessons to `client/INSIGHTS.md` (append-only, fixed sections).
+Record lessons in `client/INSIGHTS.md` with the `engineering-insights` skill (`/engineering-insights`).

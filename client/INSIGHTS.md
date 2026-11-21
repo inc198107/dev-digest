@@ -1,9 +1,9 @@
 # client — Insights
 
-> Append-only lessons for this module. Read before working here; add entries when you finish.
-> One entry = one actionable fact a cold reader can apply: `YYYY-MM-DD · context · what to do`.
-> If it is obvious to anyone reading the code, do not write it. Never rewrite or delete
-> existing entries during a session; cleanup and conflict resolution happen in a separate review.
+> Lessons for this module, written via `/engineering-insights`. Read before working here.
+> One entry = one actionable fact a cold reader can apply: `YYYY-MM-DD · area · what to do — why`.
+> If it is obvious to anyone reading the code, do not write it. Add new entries; rewrite or delete
+> an existing one only after verifying in the session that it is obsolete, and note the evidence.
 
 ## What Works
 <!-- Approaches and solutions that worked here. -->

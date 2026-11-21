@@ -26,7 +26,7 @@ review); milestones M1–M8 add features back (see `README.md#roadmap`).
 | `specs/` | cross-module feature specs (`specs/_TEMPLATE.md`) | — |
 
 Every module has: `CLAUDE.md` (rules) · `README.md` (reference) · `docs/` (deep dives) ·
-`specs/` (module-local feature specs) · `INSIGHTS.md` (lessons, append-only).
+`specs/` (module-local feature specs) · `INSIGHTS.md` (lessons, via `/engineering-insights`).
 
 ## Commands
 ```sh
@@ -79,5 +79,5 @@ cd reviewer-core && npm test && npm run typecheck
   if none exists, write one from `specs/_TEMPLATE.md` first
 
 ## After you finish
-- Append lessons to the `INSIGHTS.md` of every module you touched (append-only, fixed
-  sections). Do not skip this step.
+- Run the `engineering-insights` skill (`/engineering-insights`) to record lessons in the
+  `INSIGHTS.md` of every module you touched. Do not skip this step.

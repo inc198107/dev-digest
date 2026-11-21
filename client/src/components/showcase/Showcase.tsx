@@ -13,6 +13,7 @@ import {
   Chip,
   Avatar,
   ConfidenceNum,
+  CostBadge,
   MonoLink,
   ProgressBar,
   PercentProgress,
@@ -111,6 +112,10 @@ export function Gallery() {
         <Avatar name="you" size={28} />
         <ConfidenceNum value={0.91} />
         <ConfidenceNum value={0.6} />
+        <CostBadge usd={null} />
+        <CostBadge usd={0.0013} title="Cost of this review" />
+        <CostBadge usd={0.014} />
+        <CostBadge usd={1.234} />
         <MonoLink>src/config.ts:12</MonoLink>
         <Kbd>⌘K</Kbd>
         <Toggle on={toggle} onChange={setToggle} />

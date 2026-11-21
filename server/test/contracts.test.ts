@@ -12,6 +12,10 @@ import {
   EvalRun,
   MemoryItem,
   RunTrace,
+  RunStats,
+  RunSummary,
+  PrMeta,
+  ReviewRecord,
   Settings,
   Repo,
   PrDetail,
@@ -166,6 +170,72 @@ describe('AI contracts parse fixtures', () => {
       log: [{ t: '00.00', kind: 'info', msg: 'started' }],
     });
     expect(trace.tool_calls).toHaveLength(1);
+  });
+});
+
+describe('run cost contracts', () => {
+  const stats = { duration_ms: 8200, tokens_in: 14820, tokens_out: 1240, findings: 3, grounding: '3/3 passed' };
+
+  it('RunStats keeps cost_usd and still parses legacy traces without it', () => {
+    expect(RunStats.parse({ ...stats, cost_usd: 0.0013 }).cost_usd).toBe(0.0013);
+    expect(RunStats.parse({ ...stats, cost_usd: null }).cost_usd).toBeNull();
+    expect(RunStats.parse(stats).cost_usd).toBeUndefined();
+  });
+
+  it('RunSummary requires cost_usd (nullable)', () => {
+    const run = {
+      run_id: 'r1',
+      agent_id: 'a1',
+      agent_name: 'General Reviewer',
+      provider: 'openrouter',
+      model: 'deepseek/deepseek-v4-flash',
+      status: 'done',
+      error: null,
+      duration_ms: 8200,
+      tokens_in: 9119,
+      tokens_out: 1240,
+      findings_count: 3,
+      grounding: '3/3 passed',
+      ran_at: '2026-06-13T20:52:51.000Z',
+      score: 38,
+      blockers: 2,
+    };
+    expect(RunSummary.parse({ ...run, cost_usd: 0.0013 }).cost_usd).toBe(0.0013);
+    expect(RunSummary.parse({ ...run, cost_usd: null }).cost_usd).toBeNull();
+    expect(() => RunSummary.parse(run)).toThrow();
+  });
+
+  it('PrMeta and ReviewRecord accept an optional cost_usd', () => {
+    const pr = {
+      number: 482,
+      title: 't',
+      author: 'a',
+      branch: 'b',
+      base: 'main',
+      head_sha: 'sha',
+      additions: 1,
+      deletions: 0,
+      files_count: 1,
+      status: 'reviewed',
+    };
+    expect(PrMeta.parse({ ...pr, cost_usd: 0.014 }).cost_usd).toBe(0.014);
+    expect(PrMeta.parse(pr).cost_usd).toBeUndefined();
+
+    const review = {
+      id: 'rv1',
+      pr_id: 'p1',
+      agent_id: null,
+      run_id: 'r1',
+      kind: 'review',
+      verdict: null,
+      summary: null,
+      score: 61,
+      model: null,
+      created_at: '2026-06-13T20:52:51.000Z',
+      findings: [],
+    };
+    expect(ReviewRecord.parse({ ...review, cost_usd: 0.0014 }).cost_usd).toBe(0.0014);
+    expect(ReviewRecord.parse(review).cost_usd).toBeUndefined();
   });
 });
 

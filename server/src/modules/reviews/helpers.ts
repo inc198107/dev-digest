@@ -27,6 +27,8 @@ export interface ReviewDto {
   score: number | null;
   model: string | null;
   grounding?: string | null;
+  /** USD cost of the run that produced this review (agent_runs.cost_usd). */
+  cost_usd?: number | null;
   created_at: string;
   findings: ReviewDtoFinding[];
 }
@@ -52,10 +54,19 @@ export function findingRowToDto(row: FindingRow): ReviewDtoFinding {
   };
 }
 
+/**
+ * Map a persisted review + its findings to the API DTO.
+ * @param review - the `reviews` row
+ * @param findings - the review's `findings` rows
+ * @param agentName - display name of the agent that produced it, if known
+ * @param costUsd - USD cost of the producing run (`agent_runs.cost_usd`), if known
+ * @returns the {@link ReviewDto} served by `GET /pulls/:id/reviews`
+ */
 export function reviewToDto(
   review: ReviewRow,
   findings: FindingRow[],
   agentName?: string | null,
+  costUsd?: number | null,
 ): ReviewDto {
   return {
     id: review.id,
@@ -68,6 +79,7 @@ export function reviewToDto(
     summary: review.summary,
     score: review.score,
     model: review.model,
+    cost_usd: costUsd ?? null,
     created_at: review.createdAt.toISOString(),
     findings: findings.map(findingRowToDto),
   };

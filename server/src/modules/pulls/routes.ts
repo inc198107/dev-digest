@@ -8,6 +8,8 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { latestBatchCostByPr } from './cost.js';
+import { PullsRepository } from './repository.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -22,6 +24,7 @@ import { deriveReviewStatus } from './status.js';
 export default async function pullsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
+  const pullsRepo = new PullsRepository(container.db);
 
   app.get('/repos/:id/pulls', { schema: { params: IdParams } }, async (req): Promise<PrMeta[]> => {
     const { workspaceId } = await getContext(container, req);
@@ -128,6 +131,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
       }
     }
+    /** Cost of the latest review batch per PR (batch rule: {@link latestBatchCostByPr}). */
+    const costByPr = latestBatchCostByPr(await pullsRepo.runCostRows(workspaceId, prIds));
 
     const now = Date.now();
     return rows.map((r) => {
@@ -153,6 +158,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
       };
     });
   });

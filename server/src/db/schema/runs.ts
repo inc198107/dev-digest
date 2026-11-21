@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
@@ -28,6 +28,12 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
+  /** USD cost of this run (provider-reported or PriceBook estimate); null when
+   *  unknown, on failed/cancelled runs and on runs older than migration 0010. */
+  costUsd: doublePrecision('cost_usd'),
+  /** Groups the runs launched by one `POST /pulls/:id/review` (the PR-list Cost
+   *  column sums the latest batch). Null on runs older than migration 0010. */
+  batchId: uuid('batch_id'),
 });
 
 /** Whole trace of one run as a SINGLE jsonb document. */

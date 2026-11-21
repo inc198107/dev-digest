@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { RunSummary, RunTrace } from '@devdigest/shared';
@@ -64,7 +64,28 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    cost_usd: run.costUsd,
   }));
+}
+
+/**
+ * USD cost per run id (workspace-scoped).
+ * @param db - database handle
+ * @param workspaceId - tenancy scope
+ * @param runIds - runs to look up
+ * @returns run id → `agent_runs.cost_usd` (null when unknown); unknown ids are absent
+ */
+export async function costByRunIds(
+  db: Db,
+  workspaceId: string,
+  runIds: string[],
+): Promise<Map<string, number | null>> {
+  if (runIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: t.agentRuns.id, costUsd: t.agentRuns.costUsd })
+    .from(t.agentRuns)
+    .where(and(eq(t.agentRuns.workspaceId, workspaceId), inArray(t.agentRuns.id, runIds)));
+  return new Map(rows.map((r) => [r.id, r.costUsd]));
 }
 
 /**
@@ -121,6 +142,8 @@ export async function createAgentRun(
     prId: string;
     provider: string | null;
     model: string | null;
+    /** Shared by every run of one review request (PR-list cost = latest batch). */
+    batchId: string | null;
   },
 ): Promise<string> {
   const [row] = await db
@@ -131,6 +154,7 @@ export async function createAgentRun(
       prId: values.prId,
       provider: values.provider,
       model: values.model,
+      batchId: values.batchId,
       status: 'running',
       source: 'local',
     })
@@ -154,6 +178,8 @@ export async function completeAgentRun(
     blockers?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
+    /** USD cost of the run; null when unknown and on failed/cancelled runs. */
+    costUsd?: number | null;
   },
 ): Promise<void> {
   await db
@@ -168,6 +194,7 @@ export async function completeAgentRun(
       score: values.score ?? null,
       blockers: values.blockers ?? null,
       error: values.error ?? null,
+      costUsd: values.costUsd ?? null,
     })
     .where(eq(t.agentRuns.id, runId));
 }

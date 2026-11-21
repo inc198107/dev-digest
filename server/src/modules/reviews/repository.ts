@@ -82,6 +82,11 @@ export class ReviewRepository {
     return runRepo.listRunsForPull(this.db, workspaceId, prId);
   }
 
+  /** USD cost per run id (workspace-scoped) — joins reviews to their run's cost. */
+  costByRunIds(workspaceId: string, runIds: string[]): Promise<Map<string, number | null>> {
+    return runRepo.costByRunIds(this.db, workspaceId, runIds);
+  }
+
   /** Delete one agent run (+ its trace via FK cascade). Workspace-scoped. */
   deleteAgentRun(workspaceId: string, runId: string): Promise<boolean> {
     return runRepo.deleteAgentRun(this.db, workspaceId, runId);
@@ -144,6 +149,7 @@ export class ReviewRepository {
     prId: string;
     provider: string | null;
     model: string | null;
+    batchId: string | null;
   }): Promise<string> {
     return runRepo.createAgentRun(this.db, values);
   }
@@ -163,6 +169,8 @@ export class ReviewRepository {
       blockers?: number | null;
       /** Failure reason (status='failed') / cancellation note. Null clears it. */
       error?: string | null;
+      /** USD cost of the run; null when unknown and on failed/cancelled runs. */
+      costUsd?: number | null;
     },
   ): Promise<void> {
     return runRepo.completeAgentRun(this.db, runId, values);

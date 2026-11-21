@@ -209,6 +209,55 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
 
+    /** Run cost (MockLLMProvider reports costUsd 0.001 per call) is persisted and
+     *  surfaced on the run row, the trace stats and the review DTO. */
+    expect(run!.costUsd).toBeGreaterThan(0);
+    expect(run!.batchId).not.toBeNull();
+    expect(trace.stats.cost_usd).toBeCloseTo(run!.costUsd!, 10);
+    expect(review.cost_usd).toBeCloseTo(run!.costUsd!, 10);
+    const runs = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/runs` })).json();
+    expect(runs[0].cost_usd).toBeCloseTo(run!.costUsd!, 10);
+
+    await app.close();
+  });
+
+  it('PR list Cost = the latest review batch, not the sum of every run', async () => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const mkAgent = async (name: string) =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/agents',
+          payload: { name, provider: 'openai', model: 'gpt-4.1', system_prompt: 's' },
+        })
+      ).json();
+    const listCost = async () => {
+      const pulls = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })).json();
+      return pulls.find((p: { id: string }) => p.id === pr.id).cost_usd as number | null;
+    };
+
+    /** Never reviewed → no cost. */
+    expect(await listCost()).toBeNull();
+
+    const first = await mkAgent('CostAgentA');
+    await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: first.id } });
+    await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    const second = await mkAgent('CostAgentB');
+    await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: second.id } });
+    const runs = await waitForPrRuns(pg.handle.db, pr.id, { expected: 2 });
+
+    /** Each POST is its own batch. */
+    expect(new Set(runs.map((r) => r.batchId)).size).toBe(2);
+    const latest = runs.find((r) => r.agentId === second.id)!;
+    expect(latest.costUsd).toBeGreaterThan(0);
+    expect(await listCost()).toBeCloseTo(latest.costUsd!, 10);
+
+    /** Deleting the latest batch's only run falls back to the previous batch. */
+    await app.inject({ method: 'DELETE', url: `/runs/${latest.id}` });
+    const prev = runs.find((r) => r.agentId === first.id)!;
+    expect(await listCost()).toBeCloseTo(prev.costUsd!, 10);
+
     await app.close();
   });
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Container } from '../../platform/container.js';
 import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
@@ -116,6 +117,8 @@ export class ReviewService {
     // stream. The actual (slow) review runs in the background below.
     const runs: { run_id: string; agent_id: string; agent_name: string }[] = [];
     const jobs: { agent: AgentRow; runId: string }[] = [];
+    /** One batch per review request: the PR list's Cost column sums the latest batch. */
+    const batchId = randomUUID();
     for (const agent of targets) {
       const runId = await this.repo.createAgentRun({
         workspaceId,
@@ -123,6 +126,7 @@ export class ReviewService {
         prId,
         provider: agent.provider,
         model: agent.model,
+        batchId,
       });
       runs.push({ run_id: runId, agent_id: agent.id, agent_name: agent.name });
       jobs.push({ agent, runId });
@@ -168,8 +172,15 @@ export class ReviewService {
         if (a) names.set(review.agentId, a.name);
       }
     }
+    const runIds = rows.flatMap(({ review }) => (review.runId ? [review.runId] : []));
+    const costs = await this.repo.costByRunIds(workspaceId, runIds);
     return rows.map(({ review, findings }) =>
-      reviewToDto(review, findings, review.agentId ? names.get(review.agentId) : null),
+      reviewToDto(
+        review,
+        findings,
+        review.agentId ? names.get(review.agentId) : null,
+        review.runId ? (costs.get(review.runId) ?? null) : null,
+      ),
     );
   }
 

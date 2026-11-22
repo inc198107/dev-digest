@@ -4,13 +4,32 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, CircularScore, CostBadge } from "@devdigest/ui";
+import { Icon, Avatar, Badge, CircularScore, CostBadge, FindingsPeek } from "@devdigest/ui";
 import type { PrMeta } from "@/lib/types";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { s } from "../../styles";
 
-export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
+/**
+ * One PR-list row.
+ * @param props.pr - the PR, including its latest-batch `findings` summary
+ * @param props.repoId - repo route id, for navigation
+ * @param props.popoverPlacement - where the Findings popover opens ("up" for the lower half of
+ *   a long list, so it stays on screen)
+ * @param props.last - last row of the list (rounds its bottom corners)
+ * @returns the clickable row
+ */
+export function PRRow({
+  pr,
+  repoId,
+  popoverPlacement = "down",
+  last = false,
+}: {
+  pr: PrMeta;
+  repoId: string;
+  popoverPlacement?: "down" | "up";
+  last?: boolean;
+}) {
   const t = useTranslations("prReview");
   const router = useRouter();
   const [h, setH] = React.useState(false);
@@ -22,7 +41,7 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       onClick={() => router.push(`/repos/${repoId}/pulls/${pr.number}`)}
-      style={s.row(h)}
+      style={s.row(h, last)}
     >
       <div style={s.rowTitleCell}>
         <Icon.GitPullRequest size={15} style={s.rowIcon(st.c)} />
@@ -49,6 +68,18 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
       <div style={s.scoreCell}>
         {reviewed ? (
           <CircularScore score={pr.score!} size={34} stroke={3} />
+        ) : (
+          <span style={s.muted}>—</span>
+        )}
+      </div>
+      <div>
+        {pr.findings && pr.findings.items.length > 0 ? (
+          <FindingsPeek
+            items={pr.findings.items}
+            title={t("list.findingsTitle", { count: pr.findings.items.length })}
+            placement={popoverPlacement}
+            width={360}
+          />
         ) : (
           <span style={s.muted}>—</span>
         )}

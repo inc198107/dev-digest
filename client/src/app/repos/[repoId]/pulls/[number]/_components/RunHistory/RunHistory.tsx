@@ -2,8 +2,8 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, formatUsd, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { Badge, Icon, CircularScore, FindingsPeek, formatUsd, type IconName } from "@devdigest/ui";
+import type { FindingRecord, RunSummary, PrCommit } from "@devdigest/shared";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -90,6 +90,7 @@ export function RunHistory({
   onOpenTrace,
   onGoToReview,
   onDelete,
+  findingsByRun = {},
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
@@ -98,6 +99,8 @@ export function RunHistory({
   /** Jump to this run's inline review accordion below (clicking the agent name). */
   onGoToReview?: (runId: string) => void;
   onDelete?: (runId: string) => void;
+  /** Each run's findings (run id → findings, most severe first) for the severity icons + popover. */
+  findingsByRun?: Record<string, FindingRecord[]>;
 }) {
   const t = useTranslations("prReview");
   if (runs.length === 0 && commits.length === 0) return null;
@@ -149,6 +152,8 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        /** This run's findings, when its review is loaded; drives the severity icons. */
+        const runFindings = findingsByRun[r.run_id] ?? [];
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -188,7 +193,16 @@ export function RunHistory({
                   {r.error}
                 </div>
               )}
-              {settled && (
+              {settled && runFindings.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 3, fontSize: 12, color: "var(--text-muted)" }}>
+                  <FindingsPeek
+                    items={runFindings}
+                    title={t("timeline.findingsInRun", { count: runFindings.length })}
+                  />
+                  {(r.blockers ?? 0) > 0 && <span>{t("runStatus.blockers", { count: r.blockers ?? 0 })}</span>}
+                </div>
+              )}
+              {settled && runFindings.length === 0 && (
                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                   {t("runStatus.findings", { count: r.findings_count ?? 0 })}
                   {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}

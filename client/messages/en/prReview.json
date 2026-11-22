@@ -97,11 +97,13 @@
       "author": "Author",
       "size": "Size",
       "score": "Score",
+      "findings": "Findings",
       "status": "Status",
       "cost": "Cost",
       "updated": "Updated"
     },
     "costTitle": "Cost of the latest review",
+    "findingsTitle": "{count, plural, one {# finding} other {# findings}} in the latest review",
     "filesCount": "{count} files",
     "errorTitle": "Couldn’t load pull requests",
     "errorBody": "The engine returned an error.",
@@ -114,6 +116,8 @@
     "openTrace": "Open run trace & logs",
     "deleteRun": "Delete run",
     "usage": "{tokens} tok · {cost}",
-    "costTitle": "Cost of this run"
+    "costTitle": "Cost of this run",
+    "findingsInRun": "{count, plural, one {# finding} other {# findings}} in this run",
+    "trace": "trace"
   }
 }

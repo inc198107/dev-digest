@@ -8,7 +8,8 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
-import { latestBatchCostByPr } from './cost.js';
+import { latestBatchCostByPr, latestBatchRunIdsByPr } from './cost.js';
+import { summarizeFindingsByPr } from './findings.js';
 import { PullsRepository } from './repository.js';
 
 /**
@@ -116,8 +117,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap. The per-severity Findings column is computed below from
+    // the latest review batch, the same batch the Cost column uses.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
     if (prIds.length > 0) {
@@ -131,8 +132,14 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
       }
     }
+    const batchRuns = await pullsRepo.runCostRows(workspaceId, prIds);
     /** Cost of the latest review batch per PR (batch rule: {@link latestBatchCostByPr}). */
-    const costByPr = latestBatchCostByPr(await pullsRepo.runCostRows(workspaceId, prIds));
+    const costByPr = latestBatchCostByPr(batchRuns);
+    /** Findings of the same latest batch per PR: severity counts + items for the popover. */
+    const latestRunIds = [...latestBatchRunIdsByPr(batchRuns).values()].flat();
+    const findingsByPr = summarizeFindingsByPr(
+      await pullsRepo.findingsForRuns(workspaceId, latestRunIds),
+    );
 
     const now = Date.now();
     return rows.map((r) => {
@@ -159,6 +166,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd: costByPr.get(r.id) ?? null,
+        findings: findingsByPr.get(r.id) ?? null,
       };
     });
   });

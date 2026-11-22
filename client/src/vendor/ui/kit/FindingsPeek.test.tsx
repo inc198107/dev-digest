@@ -67,6 +67,25 @@ describe("FindingsPeek", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("a second click closes it even while the pointer is still over the counts", () => {
+    render(<FindingsPeek items={ITEMS} title="3 findings" />);
+    const trigger = screen.getByRole("button");
+    fireEvent.mouseEnter(trigger.parentElement!);
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the popover inside the hover area, so the pointer can move into it", () => {
+    render(<FindingsPeek items={ITEMS} title="3 findings" />);
+    const trigger = screen.getByRole("button");
+    const area = trigger.parentElement!;
+    fireEvent.mouseEnter(area);
+    expect(area).toContainElement(screen.getByRole("dialog"));
+  });
+
   it("opens on keyboard focus and closes on blur", () => {
     render(<FindingsPeek items={ITEMS} title="3 findings" />);
     const trigger = screen.getByRole("button");

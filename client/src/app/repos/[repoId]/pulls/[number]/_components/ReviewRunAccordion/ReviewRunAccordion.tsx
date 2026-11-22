@@ -32,6 +32,7 @@ export function ReviewRunAccordion({
   headSha,
   targetRunId = null,
   targetNonce = 0,
+  onOpenTrace,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -42,6 +43,8 @@ export function ReviewRunAccordion({
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** Open the run trace drawer for this run (the header's "trace" link, as in the design). */
+  onOpenTrace?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
   const [open, setOpen] = React.useState(defaultOpen);
@@ -109,6 +112,33 @@ export function ReviewRunAccordion({
         <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {formatWhen(review.created_at)}
         </span>
+        {onOpenTrace && review.run_id && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenTrace(review.run_id!);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            title={t("timeline.openTrace")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: "none",
+              border: "none",
+              padding: 0,
+              font: "inherit",
+              fontSize: 12,
+              fontWeight: 500,
+              color: "var(--accent-text)",
+              cursor: "pointer",
+            }}
+          >
+            <Icon.PanelRight size={13} aria-hidden="true" />
+            {t("timeline.trace")}
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();

@@ -5,9 +5,9 @@
  * and shows the review score ring.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { FindingRecord, RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import { RunHistory } from "./RunHistory";
 
@@ -35,10 +35,10 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function renderRuns(runs: RunSummary[], findingsByRun?: Record<string, FindingRecord[]>) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory runs={runs} onOpenTrace={() => {}} findingsByRun={findingsByRun} />
     </NextIntlClientProvider>,
   );
 }
@@ -92,5 +92,53 @@ describe("RunHistory — usage line", () => {
       run({ run_id: "r", status: "running", cost_usd: null }),
     ]);
     expect(screen.queryByText(/ tok · /)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Build a finding of run-1's review.
+ * @param id - finding id
+ * @param severity - review level
+ * @returns a complete finding record
+ */
+function finding(id: string, severity: FindingRecord["severity"]): FindingRecord {
+  return {
+    id,
+    severity,
+    category: "security",
+    title: `Finding ${id}`,
+    file: "src/a.ts",
+    start_line: 1,
+    end_line: 1,
+    rationale: "Because.",
+    suggestion: null,
+    confidence: 0.9,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "r1",
+    accepted_at: null,
+    dismissed_at: null,
+  };
+}
+
+describe("RunHistory — findings by severity", () => {
+  it("shows the run's severity icons and opens its findings on hover", () => {
+    renderRuns([run({ findings_count: 2, blockers: 1, score: 50 })], {
+      "run-1": [finding("c1", "CRITICAL"), finding("w1", "WARNING")],
+    });
+    expect(screen.getByRole("img", { name: "1 Critical" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 Warning" })).toBeInTheDocument();
+    expect(screen.getByText(/1 blockers/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByRole("dialog", { name: "2 findings in this run" })).toHaveTextContent(
+      "Finding c1",
+    );
+  });
+
+  it("falls back to the finding count when the run's review is not loaded", () => {
+    renderRuns([run({ findings_count: 3, blockers: 0, score: 70 })]);
+    expect(screen.getByText("3 finding(s)")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Critical/ })).not.toBeInTheDocument();
   });
 });

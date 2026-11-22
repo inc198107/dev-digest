@@ -22,6 +22,7 @@
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
+- 2026-11-22 · src/modules/reviews/diff-loader.ts `loadDiff`, src/modules/pulls/routes.ts `GET /pulls/:id` · Call `GET /pulls/:id` (or open the PR page) before `POST /pulls/:id/review` on a freshly polled PR — polling does not fill `pr_files`, only the detail route does, and the clone lacks the PR head SHA, so the run reviews an empty diff (trace "Diff ready — 0 changed file(s)", ~7k tokens in) and the agent approves with score 100; after one GET the same run sent 58k tokens.
 - 2026-11-21 · `pnpm dev` (tsx watch) · Do not `git stash` in this tree while the dev API runs, or `touch src/server.ts` afterwards — `tsx watch` restarted on the stashed (old) sources and did not restart again after `stash pop`, so the API silently served old code (symptom: responses lacked the new `cost_usd` field); after pulling a schema change also run `pnpm db:migrate`, or the reloaded API fails on the missing columns.
 - 2026-11-21 · test/indexer-pipeline.test.ts · On Windows expect 6 failures in `runIncremental` with `ENOENT … repo-intel-inc-*\src\a.ts` and do not chase them as a regression — they reproduce with every change stashed; the `writeFileAt` helper finds the parent dir via `lastIndexOf('/')`, so `mkdir` is skipped for backslash paths.
 

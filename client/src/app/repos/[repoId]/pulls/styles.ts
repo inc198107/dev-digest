@@ -3,7 +3,13 @@ import { GRID } from "./constants";
 
 /** Co-located styles for the PR list page (extracted from inline styles). */
 export const s = {
-  row: (hover: boolean): CSSProperties => ({
+  /**
+   * One PR row.
+   * @param hover - pointer is over the row
+   * @param last - last row: rounds its bottom corners, since the card no longer clips them
+   * @returns the row style
+   */
+  row: (hover: boolean, last = false): CSSProperties => ({
     display: "grid",
     gridTemplateColumns: GRID,
     alignItems: "center",
@@ -12,6 +18,7 @@ export const s = {
     borderBottom: "1px solid var(--border)",
     cursor: "pointer",
     background: hover ? "var(--bg-surface)" : "transparent",
+    borderRadius: last ? "0 0 10px 10px" : 0,
     transition: "background .1s",
   }),
   rowTitleCell: {
@@ -87,7 +94,8 @@ export const s = {
     margin: "14px 32px 44px",
     border: "1px solid var(--border)",
     borderRadius: 10,
-    overflow: "hidden",
+    /** Visible, not hidden: the Findings popover must be able to leave the card. */
+    overflow: "visible",
     background: "var(--bg-elevated)",
   } satisfies CSSProperties,
   headRow: {
@@ -96,6 +104,8 @@ export const s = {
     gap: 14,
     padding: "10px 20px",
     borderBottom: "1px solid var(--border)",
+    /** Rounds its own top corners now that the card no longer clips its children. */
+    borderRadius: "10px 10px 0 0",
     background: "var(--bg-surface)",
     fontSize: 12,
     fontWeight: 700,

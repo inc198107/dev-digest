@@ -17,6 +17,7 @@ import { usePulls, useRefreshRepo } from "@/lib/hooks";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
 import { ApiError } from "@/lib/api";
 import { COLUMN_KEYS, SKELETON_ROWS } from "./constants";
+import { popoverPlacementFor } from "./helpers";
 import { s } from "./styles";
 import { PRRow } from "./_components/PRRow";
 import { FilterBar } from "./_components/FilterBar";
@@ -127,7 +128,15 @@ export default function PullsPage() {
             }
           />
         ) : (
-          filtered.map((pr) => <PRRow key={pr.number} pr={pr} repoId={repoId} />)
+          filtered.map((pr, i) => (
+            <PRRow
+              key={pr.number}
+              pr={pr}
+              repoId={repoId}
+              popoverPlacement={popoverPlacementFor(i, filtered.length)}
+              last={i === filtered.length - 1}
+            />
+          ))
         )}
       </div>
     </AppShell>

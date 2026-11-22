@@ -4,16 +4,19 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge } from "@devdigest/ui";
+import { Badge, SEV } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { s } from "../../styles";
 import { TraceSection } from "../TraceSection";
 
-const SEV_COLOR: Record<string, string> = {
-  CRITICAL: "var(--crit)",
-  WARNING: "var(--warn)",
-  SUGGESTION: "var(--accent)",
-};
+/**
+ * Severity colour from the design system's `SEV` map.
+ * @param severity - the finding's severity (plain text from the API)
+ * @returns `SEV[severity].c`, or the muted text colour for an unknown level
+ */
+function sevColor(severity: string): string {
+  return Object.hasOwn(SEV, severity) ? SEV[severity as keyof typeof SEV].c : "var(--text-muted)";
+}
 
 export function FindingsSection({ findings }: { findings: FindingRecord[] }) {
   const t = useTranslations("runs");
@@ -38,7 +41,7 @@ export function FindingsSection({ findings }: { findings: FindingRecord[] }) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <Badge color={SEV_COLOR[f.severity] ?? "var(--text-muted)"} bg="transparent">
+                <Badge color={sevColor(f.severity)} bg="transparent">
                   {f.severity}
                 </Badge>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{f.title}</span>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
+import { Finding } from './findings.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -154,6 +155,33 @@ export type Repo = z.infer<typeof Repo>;
 export const PrStatus = z.enum(['needs_review', 'reviewed', 'stale', 'open', 'closed', 'merged']);
 export type PrStatus = z.infer<typeof PrStatus>;
 
+/** One finding of a PR's latest review batch, as the PR-list popover shows it. */
+export const PrFindingItem = Finding.pick({
+  id: true,
+  severity: true,
+  category: true,
+  title: true,
+  file: true,
+  start_line: true,
+  end_line: true,
+  confidence: true,
+  rationale: true,
+});
+export type PrFindingItem = z.infer<typeof PrFindingItem>;
+
+/** Findings of a PR's latest review batch: per-severity counts plus the items behind them. */
+export const PrFindingsSummary = z.object({
+  /** Findings per contract severity level; every level is present, `0` when it has none. */
+  counts: z.object({
+    CRITICAL: z.number().int().nonnegative(),
+    WARNING: z.number().int().nonnegative(),
+    SUGGESTION: z.number().int().nonnegative(),
+  }),
+  /** The findings themselves, most severe first. */
+  items: z.array(PrFindingItem),
+});
+export type PrFindingsSummary = z.infer<typeof PrFindingsSummary>;
+
 export const PrMeta = z.object({
   id: z.string().nullish(),
   number: z.number().int(),
@@ -172,6 +200,8 @@ export const PrMeta = z.object({
   score: z.number().int().nullish(),
   /** USD cost of the latest review batch (list endpoint only; null when unknown). */
   cost_usd: z.number().nullish(),
+  /** Findings of the latest review batch (list endpoint only; null until a batch has a done run). */
+  findings: PrFindingsSummary.nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

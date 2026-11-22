@@ -1,6 +1,6 @@
 # Severity counters
 
-**Status:** in progress
+**Status:** done
 **Milestone:** L01 homework
 **Modules touched:** client (server · reviewer-core · e2e: none — the data is already on the page)
 
@@ -45,18 +45,26 @@ icons come from `SEV` in `@devdigest/ui`; `SEV` / `tokens.ts` stay untouched.
   invalidates `["reviews", prId]`; counters and list derive from the same refetched findings and
   stay in sync without a reload.
 - Clicking a counter sends no request and starts no agent: it is local component state.
-- Changing the severity filter resets the j/k keyboard focus to the first card.
+- Changing either filter (severity or "Hide low confidence") resets the j/k keyboard focus to
+  the first card, so it never points past the end of the narrowed list.
 - A severity value outside the contract (the DB column is plain text) is not counted.
 
 ## Acceptance criteria
-- [ ] An expanded run shows "N CRITICAL · N WARNING · N SUGGESTION" above its finding cards.
-- [ ] The numbers match the cards of each level in that run's list.
-- [ ] Clicking a level leaves only that level's findings; clicking it again restores the full list.
-- [ ] The severity filter and "Hide low confidence" combine (both conditions apply).
-- [ ] The active level is highlighted with its `SEV` colour; the other two are dimmed.
-- [ ] Clicking a counter sends no network request.
-- [ ] Tests: client (`FindingsPanel.test.tsx` — counts, filter, toggle combo, empty state, no
-      fetch) ✔ · `pnpm typecheck` ✔ · server / reviewer-core / e2e untouched.
+- [x] An expanded run shows "N CRITICAL · N WARNING · N SUGGESTION" above its finding cards.
+- [x] The numbers match the cards of each level in that run's list.
+- [x] Clicking a level leaves only that level's findings; clicking it again restores the full list.
+- [x] The severity filter and "Hide low confidence" combine (both conditions apply) — covered by
+      a component test; no real run so far had a finding below 0.65 to show it in the browser.
+- [x] The active level is highlighted with its `SEV` colour; the other two are dimmed.
+- [x] Clicking a counter sends no network request.
+- [x] Tests: client (`FindingsPanel.test.tsx` — counts, filter, toggle combo, empty state, SEV
+      highlight, sync after accept/dismiss refetch, no fetch) ✔ · `pnpm test` / `pnpm typecheck` ✔ ·
+      server / reviewer-core / e2e untouched.
+- [x] Manual check (2026-11-22, Claude in Chrome, `pnpm dev`): seed PR #482 run shows
+      1 CRITICAL · 1 WARNING · 0 SUGGESTION; CRITICAL → WARNING → clear; the 0 level shows the empty
+      state; no request to the API on counter clicks. Demo PR `inc198107/dev-digest#5`: with the
+      WARNING filter on, Accept → `POST /findings/:id/accept` + `GET /pulls/:id/reviews`, the filter
+      stays and the counter still matches the list.
 
 ## Open questions
 - None blocking.

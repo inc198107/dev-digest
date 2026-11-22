@@ -43,9 +43,11 @@ import {
   LiveLogStream,
   ExportWizardSteps,
   AutoTriggerStatus,
+  SeverityCounts,
+  FindingsPeek,
 } from "@devdigest/ui";
 import { s } from "./styles";
-import { SEVERITIES, CATEGORIES, MODEL_OPTIONS } from "./constants";
+import { SEVERITIES, CATEGORIES, MODEL_OPTIONS, PEEK_FINDINGS } from "./constants";
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -99,6 +101,11 @@ export function Gallery() {
         {CATEGORIES.map((c) => (
           <CategoryTag key={c} category={c} />
         ))}
+      </Group>
+
+      <Group title="Findings by severity (counts + popover)">
+        <SeverityCounts counts={{ CRITICAL: 2, WARNING: 1, SUGGESTION: 1 }} />
+        <FindingsPeek items={PEEK_FINDINGS} title={`${PEEK_FINDINGS.length} findings in this run`} />
       </Group>
 
       <Group title="Chips, Avatars, Confidence, MonoLink, Kbd">

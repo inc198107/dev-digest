@@ -29,8 +29,12 @@ None. Levels come from the Zod enum `Severity` in `@devdigest/shared`
 icons come from `SEV` in `@devdigest/ui`; `SEV` / `tokens.ts` stay untouched.
 
 ## Behaviour
-- The row shows all three levels in contract order as "count LABEL", separated by "·"; a level
-  with no findings shows `0` and stays clickable.
+- The row shows all three levels in contract order as bordered chips "icon count Label"
+  ("1 Critical"), like the design's FindingsPanel chips and the homework video. A divider sits
+  between the chips and "Hide low confidence". A level with no findings shows `0` and stays
+  clickable (homework P3 + design; the video hides it). Restyled after the first version, which
+  used "3 CRITICAL · 5 WARNING" text with "·" separators (spec
+  `specs/findings-severity-summary.md`).
 - Counts are computed on the client from the run's findings **after** "Hide low confidence"
   (confidence ≥ 0.65 when on) and **before** the severity filter, so a counter's number always
   equals the cards shown after clicking it.

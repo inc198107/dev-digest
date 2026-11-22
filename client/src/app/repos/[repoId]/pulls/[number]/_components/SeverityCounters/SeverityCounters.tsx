@@ -1,6 +1,7 @@
 /**
- * SeverityCounters — "3 CRITICAL · 5 WARNING · 2 SUGGESTION" above a run's finding cards.
- * Presentational: the parent owns the counts and the active level; a click asks it to toggle.
+ * SeverityCounters — chips "3 Critical", "5 Warning", "2 Suggestion" (each with its SEV icon)
+ * above a run's finding cards (the design's FindingsPanel chips). Presentational: the parent owns the counts and the
+ * active level; a click asks it to toggle.
  */
 "use client";
 
@@ -31,28 +32,22 @@ export function SeverityCounters({
   const t = useTranslations("prReview");
   return (
     <div role="group" aria-label={t("panel.severityFilter")} style={s.row}>
-      {COUNTER_SEVERITIES.map((sev, i) => {
+      {COUNTER_SEVERITIES.map((sev) => {
         const I = Icon[SEV[sev].icon];
         return (
-          <React.Fragment key={sev}>
-            {i > 0 && (
-              <span aria-hidden="true" style={s.sep}>
-                ·
-              </span>
-            )}
-            <button
-              type="button"
-              aria-pressed={active === sev}
-              onClick={() => onToggle(sev)}
-              style={s.counter(sev, active)}
-            >
-              <I size={13} style={{ color: SEV[sev].c }} aria-hidden="true" />
-              <span className="tnum" style={s.count}>
-                {counts[sev]}
-              </span>
-              <span style={s.label}>{t(`panel.severity.${sev}`)}</span>
-            </button>
-          </React.Fragment>
+          <button
+            key={sev}
+            type="button"
+            aria-pressed={active === sev}
+            onClick={() => onToggle(sev)}
+            style={s.counter(sev, active)}
+          >
+            <I size={13} style={{ color: SEV[sev].c }} aria-hidden="true" />
+            <span className="tnum" style={s.count}>
+              {counts[sev]}
+            </span>
+            <span>{t(`panel.severity.${sev}`)}</span>
+          </button>
         );
       })}
     </div>

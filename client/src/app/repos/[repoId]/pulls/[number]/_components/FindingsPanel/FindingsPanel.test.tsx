@@ -95,7 +95,7 @@ describe("FindingsPanel severity counters", () => {
   it("counts every level, showing 0 for a level without findings", () => {
     renderWithIntl(<FindingsPanel findings={MIXED} prId="pr1" />);
     const group = screen.getByRole("group", { name: "Filter findings by severity" });
-    expect(group).toHaveTextContent("2Critical·1Warning·0Suggestion");
+    expect(group).toHaveTextContent("2Critical1Warning0Suggestion");
     expect(screen.getByRole("button", { name: "2 Critical" })).toHaveAttribute(
       "aria-pressed",
       "false",

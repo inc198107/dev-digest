@@ -80,6 +80,7 @@ export function FindingsPanel({
     <div>
       <div style={s.toolbar}>
         <SeverityCounters counts={counts} active={severity} onToggle={toggleSeverity} />
+        <div style={s.divider} aria-hidden="true" />
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}
           <Toggle on={hideLow} onChange={toggleHideLow} size={16} />

@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { runFullIndex } from '../src/modules/repo-intel/pipeline/full.js';
 import { runIncremental } from '../src/modules/repo-intel/pipeline/incremental.js';
 import type { RepoIntelRepository } from '../src/modules/repo-intel/repository.js';
@@ -137,10 +137,16 @@ function makeContainer(git: MiniGit): Container {
   } as unknown as Container;
 }
 
+/**
+ * Write a file below the temp repo root, creating its parent folders.
+ * @param root Temp repo root.
+ * @param rel Repo-relative path with forward slashes.
+ * @param contents File contents.
+ * @returns Resolves when written.
+ */
 async function writeFileAt(root: string, rel: string, contents: string): Promise<void> {
   const full = join(root, rel);
-  const slash = full.lastIndexOf('/');
-  if (slash > 0) await mkdir(full.slice(0, slash), { recursive: true });
+  await mkdir(dirname(full), { recursive: true });
   await writeFile(full, contents);
 }
 

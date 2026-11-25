@@ -130,9 +130,9 @@ export default async function agentsRoutes(appBase: FastifyInstance): Promise<vo
       const { workspaceId } = await getContext(container, req);
       const body = req.body;
       const links =
-        body.skill_ids !== undefined
+        'skill_ids' in body
           ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+          : await service.linkSkill(workspaceId, req.params.id, body.skill_id, body.order);
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },
@@ -143,9 +143,9 @@ export default async function agentsRoutes(appBase: FastifyInstance): Promise<vo
     { schema: { params: IdParams, response: { 200: ModelInfoList } } },
     async (req) => {
       const { workspaceId } = await getContext(container, req);
-      const agent = await service.get(workspaceId, req.params.id);
-      if (!agent) throw new NotFoundError('Agent not found');
-      return service.listModels(agent.provider);
+      const models = await service.modelsForAgent(workspaceId, req.params.id);
+      if (!models) throw new NotFoundError('Agent not found');
+      return models;
     },
   );
 

@@ -7,8 +7,9 @@ import type {
   ModelInfo,
   Provider,
 } from '@devdigest/shared';
+import { ValidationError } from '../../platform/errors.js';
 import { INITIAL_AGENT_VERSION } from './constants.js';
-import { nextSkillOrder, planVersion } from './domain.js';
+import { nextSkillOrder, planVersion, unknownSkillIds } from './domain.js';
 import type { AgentsStore, AgentsUnitOfWork, ListModels } from './ports.js';
 
 /**
@@ -74,7 +75,7 @@ export class AgentsService {
         { ...input, createdBy: userId ?? null },
         INITIAL_AGENT_VERSION,
       );
-      await store.snapshotVersion(agent.id, INITIAL_AGENT_VERSION);
+      await store.snapshotVersion(workspaceId, agent.id, INITIAL_AGENT_VERSION);
       return agent;
     });
   }
@@ -82,6 +83,8 @@ export class AgentsService {
   /**
    * Update an agent. A config change (anything but `enabled`) bumps the version
    * and snapshots the new config; the decision is the pure `planVersion` rule.
+   * The agent row stays locked from the read to the commit, so concurrent updates
+   * cannot plan the same version or write back a stale one.
    * @param workspaceId Tenant scope.
    * @param id Agent id.
    * @param patch Fields to change.
@@ -89,11 +92,12 @@ export class AgentsService {
    */
   update(workspaceId: string, id: string, patch: AgentUpdateBody): Promise<Agent | undefined> {
     return this.deps.uow.run(async (store) => {
-      const existing = await store.get(workspaceId, id);
+      const existing = await store.getForUpdate(workspaceId, id);
       if (!existing) return undefined;
       const plan = planVersion(existing, patch);
+      if (!plan.bump) return store.update(workspaceId, id, patch);
       const updated = await store.update(workspaceId, id, patch, plan.version);
-      if (updated && plan.bump) await store.snapshotVersion(id, plan.version);
+      if (updated) await store.snapshotVersion(workspaceId, id, plan.version);
       return updated;
     });
   }
@@ -136,40 +140,70 @@ export class AgentsService {
   }
 
   /**
-   * Replace the agent's linked skills with `skillIds`, in that order.
+   * Replace the agent's linked skills with `skillIds`, in that order. Runs in one unit of work
+   * with the agent row locked, so concurrent edits of the same agent's skills serialize.
    * @param workspaceId Tenant scope.
    * @param agentId Agent id.
-   * @param skillIds Skill ids in their new order.
+   * @param skillIds Skill ids in their new order; all must be skills of this workspace.
    * @returns The resulting links, or undefined when the agent is not in this workspace.
+   * @throws ValidationError when a skill id is not a skill of this workspace.
    */
-  async setSkills(
+  setSkills(
     workspaceId: string,
     agentId: string,
     skillIds: string[],
   ): Promise<AgentSkillLink[] | undefined> {
-    if (!(await this.deps.store.get(workspaceId, agentId))) return undefined;
-    await this.deps.uow.run((store) => store.replaceSkills(agentId, skillIds));
-    return this.deps.store.skillLinks(agentId);
+    return this.deps.uow.run(async (store) => {
+      if (!(await store.getForUpdate(workspaceId, agentId))) return undefined;
+      await this.assertKnownSkills(store, workspaceId, skillIds);
+      await store.replaceSkills(agentId, skillIds);
+      return store.skillLinks(agentId);
+    });
   }
 
   /**
-   * Link one skill (appended unless an order is given); additive to existing links.
+   * Link one skill (appended unless an order is given); additive to existing links. Runs in
+   * one unit of work with the agent row locked, so concurrent appends get distinct positions.
    * @param workspaceId Tenant scope.
    * @param agentId Agent id.
-   * @param skillId Skill id.
+   * @param skillId Skill id; must be a skill of this workspace.
    * @param order Requested position.
    * @returns The resulting links, or undefined when the agent is not in this workspace.
+   * @throws ValidationError when the skill is not a skill of this workspace.
    */
-  async linkSkill(
+  linkSkill(
     workspaceId: string,
     agentId: string,
     skillId: string,
     order?: number,
   ): Promise<AgentSkillLink[] | undefined> {
-    if (!(await this.deps.store.get(workspaceId, agentId))) return undefined;
-    const linked = await this.deps.store.skillLinks(agentId);
-    await this.deps.store.linkSkill(agentId, skillId, nextSkillOrder(linked.length, order));
-    return this.deps.store.skillLinks(agentId);
+    return this.deps.uow.run(async (store) => {
+      if (!(await store.getForUpdate(workspaceId, agentId))) return undefined;
+      await this.assertKnownSkills(store, workspaceId, [skillId]);
+      const linked = await store.skillLinks(agentId);
+      await store.linkSkill(agentId, skillId, nextSkillOrder(linked.length, order));
+      return store.skillLinks(agentId);
+    });
+  }
+
+  /**
+   * Reject skill ids that are not skills of the workspace (another tenant's or unknown).
+   * @param store Transaction-bound store.
+   * @param workspaceId Tenant scope.
+   * @param skillIds Requested skill ids.
+   * @returns Resolves when every id is known.
+   * @throws ValidationError listing the unknown ids.
+   */
+  private async assertKnownSkills(
+    store: AgentsStore,
+    workspaceId: string,
+    skillIds: string[],
+  ): Promise<void> {
+    if (skillIds.length === 0) return;
+    const unknown = unknownSkillIds(skillIds, await store.knownSkillIds(workspaceId, skillIds));
+    if (unknown.length > 0) {
+      throw new ValidationError(`Unknown skill id(s): ${unknown.join(', ')}`, { skill_ids: unknown });
+    }
   }
 
   /**
@@ -184,5 +218,18 @@ export class AgentsService {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Model list of the agent's current provider.
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @returns Its provider's models (or [] when the provider fails), or undefined when the
+   *   agent is not in this workspace.
+   */
+  async modelsForAgent(workspaceId: string, agentId: string): Promise<ModelInfo[] | undefined> {
+    const agent = await this.deps.store.get(workspaceId, agentId);
+    if (!agent) return undefined;
+    return this.listModels(agent.provider);
   }
 }

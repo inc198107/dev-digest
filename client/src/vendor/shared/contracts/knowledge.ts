@@ -192,7 +192,7 @@ export const AgentSkillLink = z.object({
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
 
-// Request bodies of the agents API: POST /agents, PUT /agents/:id, POST /agents/:id/skills.
+/** Request bodies of the agents API: POST /agents, PUT /agents/:id, POST /agents/:id/skills. */
 export const AgentCreateBody = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -210,14 +210,40 @@ export type AgentCreateBody = z.infer<typeof AgentCreateBody>;
 export const AgentUpdateBody = AgentCreateBody.partial();
 export type AgentUpdateBody = z.infer<typeof AgentUpdateBody>;
 
-// Either replace the whole ordered set (`skill_ids`) or link one skill (`skill_id`).
-export const AgentSkillsBody = z
+/** Replace the whole ordered set of linked skills; each skill at most once. */
+export const AgentSkillsSetBody = z
   .object({
-    skill_ids: z.array(z.string().uuid()).optional(),
-    skill_id: z.string().uuid().optional(),
-    order: z.number().int().optional(),
+    skill_ids: z
+      .array(z.string().uuid())
+      .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
+        message: 'skill_ids must be unique',
+      }),
   })
-  .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
-    message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
-  });
+  .strict();
+export type AgentSkillsSetBody = z.infer<typeof AgentSkillsSetBody>;
+
+/** Largest value of a Postgres `integer` column (`agent_skills.order`). */
+const PG_INT_MAX = 2_147_483_647;
+
+/** Link one skill, appended unless a position is given. */
+export const AgentSkillLinkBody = z
+  .object({
+    skill_id: z.string().uuid(),
+    order: z.number().int().nonnegative().max(PG_INT_MAX).optional(),
+  })
+  .strict();
+export type AgentSkillLinkBody = z.infer<typeof AgentSkillLinkBody>;
+
+/**
+ * POST /agents/:id/skills: either replace the whole ordered set (`skill_ids`) or link one
+ * skill (`skill_id`). Both objects are strict, so a body that mixes them is rejected.
+ */
+export const AgentSkillsBody = z.union([AgentSkillsSetBody, AgentSkillLinkBody], {
+  errorMap: (issue, ctx) => ({
+    message:
+      issue.code === 'invalid_union'
+        ? 'Provide skill_ids (set/reorder) or skill_id (link one), not both'
+        : ctx.defaultError,
+  }),
+});
 export type AgentSkillsBody = z.infer<typeof AgentSkillsBody>;

@@ -33,6 +33,14 @@ export interface AgentsStore {
    */
   get(workspaceId: string, id: string): Promise<Agent | undefined>;
   /**
+   * Read the agent and lock its row until the surrounding unit of work ends, so concurrent
+   * read-then-write updates run one after another. Use it only inside `AgentsUnitOfWork.run`.
+   * @param workspaceId Tenant scope.
+   * @param id Agent id.
+   * @returns The agent, or undefined when it is not in this workspace.
+   */
+  getForUpdate(workspaceId: string, id: string): Promise<Agent | undefined>;
+  /**
    * @param workspaceId Tenant scope.
    * @param input The new agent.
    * @param version The version to store on the agent.
@@ -43,14 +51,14 @@ export interface AgentsStore {
    * @param workspaceId Tenant scope.
    * @param id Agent id.
    * @param patch Fields to change.
-   * @param version The version the agent has after the update.
+   * @param version The new version when the config changed; omit it to keep the stored one.
    * @returns The updated agent, or undefined when it is not in this workspace.
    */
   update(
     workspaceId: string,
     id: string,
     patch: AgentUpdateBody,
-    version: number,
+    version?: number,
   ): Promise<Agent | undefined>;
   /**
    * @param workspaceId Tenant scope.
@@ -59,12 +67,14 @@ export interface AgentsStore {
    */
   delete(workspaceId: string, id: string): Promise<boolean>;
   /**
-   * Record the agent's current config and linked skills as an immutable snapshot.
+   * Record the agent's current config and linked skills as an immutable snapshot. Idempotent
+   * per version; does nothing when the agent is not in this workspace.
+   * @param workspaceId Tenant scope.
    * @param agentId Agent id.
    * @param version Version number of the snapshot.
    * @returns Resolves when stored.
    */
-  snapshotVersion(agentId: string, version: number): Promise<void>;
+  snapshotVersion(workspaceId: string, agentId: string, version: number): Promise<void>;
   /**
    * @param agentId Agent id.
    * @returns Config snapshots, newest first.
@@ -82,12 +92,19 @@ export interface AgentsStore {
    */
   skillLinks(agentId: string): Promise<AgentSkillLink[]>;
   /**
-   * Replace the whole ordered set of linked skills.
+   * Replace the whole ordered set of linked skills. Two statements: call it only inside
+   * `AgentsUnitOfWork.run`, which owns the transaction.
    * @param agentId Agent id.
    * @param skillIds Skill ids in their new order.
    * @returns Resolves when stored.
    */
   replaceSkills(agentId: string, skillIds: string[]): Promise<void>;
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillIds Requested skill ids.
+   * @returns The ids among `skillIds` that are skills of this workspace (lower case).
+   */
+  knownSkillIds(workspaceId: string, skillIds: string[]): Promise<string[]>;
   /**
    * Link one skill at a position (upsert).
    * @param agentId Agent id.

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type {
   Agent,
   AgentSkillLink,
@@ -21,8 +21,6 @@ import type { AgentsStore, AgentsUnitOfWork, NewAgent } from './ports.js';
  * method returns contract shapes, so Drizzle rows never leave this file.
  * Workspace-scoped wherever the caller passes a workspace.
  */
-
-export type { AgentRow, AgentVersionRow };
 
 /**
  * Map a persisted agent row to the public `Agent` contract.
@@ -49,15 +47,22 @@ function toAgent(row: AgentRow): Agent {
 /**
  * Map an `agent_versions` row to the public `AgentVersion` contract. `config_json`
  * is untyped jsonb (an older snapshot could drift), so it is parsed here: a
- * malformed snapshot throws instead of leaking an unvalidated blob.
+ * malformed snapshot throws instead of leaking an unvalidated blob. The error is a
+ * plain Error, so the central handler answers 500 (server data is wrong), not the
+ * 422 it gives a ZodError (client input is wrong).
  * @param row Drizzle row from `agent_versions`.
  * @returns The contract shape.
+ * @throws Error when the stored config does not match `AgentVersionConfig`.
  */
 function toAgentVersion(row: AgentVersionRow): AgentVersion {
+  const config = AgentVersionConfig.safeParse(row.configJson);
+  if (!config.success) {
+    throw new Error(`agent_versions: snapshot v${row.version} of agent ${row.agentId} has an invalid config`);
+  }
   return {
     agent_id: row.agentId,
     version: row.version,
-    config: AgentVersionConfig.parse(row.configJson),
+    config: config.data,
     created_at: row.createdAt.toISOString(),
   };
 }
@@ -84,6 +89,24 @@ export class AgentsRepository implements AgentsStore {
    */
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
     const row = await this.getById(workspaceId, id);
+    return row ? toAgent(row) : undefined;
+  }
+
+  /**
+   * `SELECT … FOR NO KEY UPDATE`: the row stays locked until the transaction this repository
+   * is bound to ends, which serializes concurrent updaters of the agent without blocking
+   * inserts that reference it (agent_runs, agent_skills, agent_versions take KEY SHARE).
+   * On the shared client the lock is released right away.
+   * @param workspaceId Tenant scope.
+   * @param id Agent id.
+   * @returns The agent, or undefined when it is not in this workspace.
+   */
+  async getForUpdate(workspaceId: string, id: string): Promise<Agent | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+      .for('no key update');
     return row ? toAgent(row) : undefined;
   }
 
@@ -158,36 +181,36 @@ export class AgentsRepository implements AgentsStore {
   }
 
   /**
-   * Write the patch and the version the use case decided on. No rules here.
+   * Write the patch and, when given, the version the use case decided on. No rules here.
    * @param workspaceId Tenant scope.
    * @param id Agent id.
    * @param patch Fields to change.
-   * @param version The version the agent has after the update.
+   * @param version The new version when the config changed; omitted, the stored one is kept.
    * @returns The updated agent, or undefined when it is not in this workspace.
    */
   async update(
     workspaceId: string,
     id: string,
     patch: AgentUpdateBody,
-    version: number,
+    version?: number,
   ): Promise<Agent | undefined> {
+    const values = {
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      ...(patch.provider !== undefined ? { provider: patch.provider } : {}),
+      ...(patch.model !== undefined ? { model: patch.model } : {}),
+      ...(patch.system_prompt !== undefined ? { systemPrompt: patch.system_prompt } : {}),
+      ...(patch.output_schema !== undefined ? { outputSchema: patch.output_schema as object } : {}),
+      ...(patch.strategy !== undefined ? { strategy: patch.strategy } : {}),
+      ...(patch.ci_fail_on !== undefined ? { ciFailOn: patch.ci_fail_on } : {}),
+      ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
+      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      ...(version !== undefined ? { version } : {}),
+    };
+    if (Object.keys(values).length === 0) return this.get(workspaceId, id);
     const [row] = await this.db
       .update(t.agents)
-      .set({
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.description !== undefined ? { description: patch.description } : {}),
-        ...(patch.provider !== undefined ? { provider: patch.provider } : {}),
-        ...(patch.model !== undefined ? { model: patch.model } : {}),
-        ...(patch.system_prompt !== undefined ? { systemPrompt: patch.system_prompt } : {}),
-        ...(patch.output_schema !== undefined
-          ? { outputSchema: patch.output_schema as object }
-          : {}),
-        ...(patch.strategy !== undefined ? { strategy: patch.strategy } : {}),
-        ...(patch.ci_fail_on !== undefined ? { ciFailOn: patch.ci_fail_on } : {}),
-        ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
-        ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-        version,
-      })
+      .set(values)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
       .returning();
     return row ? toAgent(row) : undefined;
@@ -195,12 +218,13 @@ export class AgentsRepository implements AgentsStore {
 
   /**
    * Snapshot the agent's current config and ordered skill ids (idempotent per version).
+   * @param workspaceId Tenant scope: an agent of another workspace is not snapshotted.
    * @param agentId Agent id.
    * @param version Version number of the snapshot.
    * @returns Resolves when stored.
    */
-  async snapshotVersion(agentId: string, version: number): Promise<void> {
-    const [row] = await this.db.select().from(t.agents).where(eq(t.agents.id, agentId));
+  async snapshotVersion(workspaceId: string, agentId: string, version: number): Promise<void> {
+    const row = await this.getById(workspaceId, agentId);
     if (!row) return;
     const skills = (await this.skillLinks(agentId)).map((l) => l.skill_id);
     await this.db
@@ -263,8 +287,8 @@ export class AgentsRepository implements AgentsStore {
   }
 
   /**
-   * Replace the full set of linked skills, assigning order = index. Two statements:
-   * call it inside a unit of work.
+   * Replace the full set of linked skills, assigning order = index. Two statements: the use
+   * case calls it inside `AgentsUnitOfWork.run`, which owns the transaction.
    * @param agentId Agent id.
    * @param skillIds Skill ids in their new order.
    * @returns Resolves when stored.
@@ -275,6 +299,21 @@ export class AgentsRepository implements AgentsStore {
     await this.db
       .insert(t.agentSkills)
       .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+  }
+
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillIds Requested skill ids.
+   * @returns The ids among `skillIds` that are skills of this workspace (Postgres returns uuids
+   *   in lower case).
+   */
+  async knownSkillIds(workspaceId: string, skillIds: string[]): Promise<string[]> {
+    if (skillIds.length === 0) return [];
+    const rows = await this.db
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+    return rows.map((r) => r.id);
   }
 
   /**

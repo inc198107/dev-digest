@@ -70,3 +70,14 @@ export function planVersion(
 export function nextSkillOrder(linkedCount: number, requested?: number): number {
   return requested ?? linkedCount;
 }
+
+/**
+ * Find the requested skills that the workspace does not have. UUIDs compare case-insensitively.
+ * @param requested Skill ids the caller wants to link.
+ * @param known Skill ids that exist in the agent's workspace.
+ * @returns Requested ids that are not known, in request order.
+ */
+export function unknownSkillIds(requested: readonly string[], known: readonly string[]): string[] {
+  const knownSet = new Set(known.map((id) => id.toLowerCase()));
+  return requested.filter((id) => !knownSet.has(id.toLowerCase()));
+}

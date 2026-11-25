@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Agent } from '@devdigest/shared';
-import { isConfigChange, nextSkillOrder, planVersion } from '../src/modules/agents/domain.js';
+import { isConfigChange, nextSkillOrder, planVersion, unknownSkillIds } from '../src/modules/agents/domain.js';
 
 /** Pure agents rules: no database, no container, plain objects in and out. */
 
@@ -61,5 +61,20 @@ describe('nextSkillOrder', () => {
 
   it('honours a requested order, including 0', () => {
     expect(nextSkillOrder(2, 0)).toBe(0);
+  });
+});
+
+describe('unknownSkillIds', () => {
+  it('returns the requested ids the workspace does not have, in request order', () => {
+    expect(unknownSkillIds(['c', 'a', 'b'], ['a'])).toEqual(['c', 'b']);
+  });
+
+  it('compares uuids case-insensitively', () => {
+    const id = '0F8FAD5B-D9CB-469F-A165-70867728950E';
+    expect(unknownSkillIds([id], [id.toLowerCase()])).toEqual([]);
+  });
+
+  it('returns nothing for an empty request', () => {
+    expect(unknownSkillIds([], [])).toEqual([]);
   });
 });

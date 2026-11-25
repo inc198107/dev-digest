@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { Agent, AgentSkillLink, AgentUpdateBody, AgentVersion } from '@devdigest/shared';
 import { AgentsService } from '../src/modules/agents/service.js';
 import type { AgentsStore, AgentsUnitOfWork, NewAgent } from '../src/modules/agents/ports.js';
+import { agentsStoreContract } from './helpers/agents-store-contract.js';
 
 /**
  * Agents use cases against an in-memory fake of their own ports: no Postgres,
- * no Container, no vi.mock. The real store is covered by agents-versions.it.test.ts.
+ * no Container, no vi.mock. The fake and the real store share agentsStoreContract;
+ * the real store is covered by agents-versions.it.test.ts.
  */
 
 /** In-memory AgentsStore; records snapshots so tests can assert on versioning. */
@@ -13,6 +15,12 @@ class FakeAgentsStore implements AgentsStore {
   agents = new Map<string, Agent & { workspaceId: string }>();
   versions: AgentVersion[] = [];
   links: AgentSkillLink[] = [];
+  /** Ids passed to getForUpdate, so tests can check that updates lock the row. */
+  locked: string[] = [];
+  /** The version each update call wrote (undefined = kept). */
+  updates: { id: string; version: number | undefined }[] = [];
+  /** Existing skills: id → workspace. */
+  skills = new Map<string, string>();
   private seq = 0;
 
   async list(workspaceId: string): Promise<Agent[]> {
@@ -21,6 +29,10 @@ class FakeAgentsStore implements AgentsStore {
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
     const a = this.agents.get(id);
     return a && a.workspaceId === workspaceId ? strip(a) : undefined;
+  }
+  async getForUpdate(workspaceId: string, id: string): Promise<Agent | undefined> {
+    this.locked.push(id);
+    return this.get(workspaceId, id);
   }
   async insert(workspaceId: string, input: NewAgent, version: number): Promise<Agent> {
     const id = `agent-${++this.seq}`;
@@ -46,11 +58,12 @@ class FakeAgentsStore implements AgentsStore {
     workspaceId: string,
     id: string,
     patch: AgentUpdateBody,
-    version: number,
+    version?: number,
   ): Promise<Agent | undefined> {
+    this.updates.push({ id, version });
     const a = this.agents.get(id);
     if (!a || a.workspaceId !== workspaceId) return undefined;
-    const next = { ...a, ...definedOnly(patch), version };
+    const next = { ...a, ...definedOnly(patch), ...(version !== undefined ? { version } : {}) };
     this.agents.set(id, next);
     return strip(next);
   }
@@ -59,8 +72,10 @@ class FakeAgentsStore implements AgentsStore {
     if (!a || a.workspaceId !== workspaceId) return false;
     return this.agents.delete(id);
   }
-  async snapshotVersion(agentId: string, version: number): Promise<void> {
-    const a = this.agents.get(agentId)!;
+  async snapshotVersion(workspaceId: string, agentId: string, version: number): Promise<void> {
+    const a = this.agents.get(agentId);
+    if (!a || a.workspaceId !== workspaceId) return;
+    if (this.versions.some((v) => v.agent_id === agentId && v.version === version)) return;
     this.versions.push({
       agent_id: agentId,
       version,
@@ -93,6 +108,9 @@ class FakeAgentsStore implements AgentsStore {
   async linkSkill(agentId: string, skillId: string, order: number): Promise<void> {
     this.links = this.links.filter((l) => !(l.agent_id === agentId && l.skill_id === skillId));
     this.links.push({ agent_id: agentId, skill_id: skillId, order });
+  }
+  async knownSkillIds(workspaceId: string, skillIds: string[]): Promise<string[]> {
+    return skillIds.filter((id) => this.skills.get(id) === workspaceId);
   }
 }
 
@@ -129,6 +147,20 @@ function fakeUow(store: AgentsStore): AgentsUnitOfWork & { runs: number } {
 const WS = 'ws-1';
 const body = { name: 'Security', provider: 'openai' as const, model: 'gpt-4o-mini', system_prompt: 'x' };
 
+agentsStoreContract('FakeAgentsStore', async () => {
+  const store = new FakeAgentsStore();
+  store.skills.set('skill-a', WS);
+  store.skills.set('skill-b', WS);
+  store.skills.set('skill-foreign', 'ws-other');
+  return {
+    store,
+    workspaceId: WS,
+    otherWorkspaceId: 'ws-other',
+    skillIds: ['skill-a', 'skill-b'],
+    foreignSkillId: 'skill-foreign',
+  };
+});
+
 describe('AgentsService', () => {
   let store: FakeAgentsStore;
   let uow: ReturnType<typeof fakeUow>;
@@ -136,6 +168,8 @@ describe('AgentsService', () => {
 
   beforeEach(() => {
     store = new FakeAgentsStore();
+    for (const id of ['s1', 's2', 's3']) store.skills.set(id, WS);
+    store.skills.set('s-foreign', 'ws-other');
     uow = fakeUow(store);
     service = new AgentsService({ store, uow, listModels: async () => [] });
   });
@@ -161,6 +195,36 @@ describe('AgentsService', () => {
     expect(await store.listVersions(agent.id)).toHaveLength(1);
   });
 
+  it('update reads the agent with a row lock inside the unit of work', async () => {
+    const agent = await service.create(WS, body);
+    await service.update(WS, agent.id, { enabled: false });
+    expect(store.locked).toEqual([agent.id]);
+    expect(uow.runs).toBe(2);
+  });
+
+  it('only a config change writes a version; an enabled-only update leaves it alone', async () => {
+    const agent = await service.create(WS, body);
+    await service.update(WS, agent.id, { model: 'gpt-4o' });
+    await service.update(WS, agent.id, { enabled: false });
+    expect(store.updates).toEqual([
+      { id: agent.id, version: 2 },
+      { id: agent.id, version: undefined },
+    ]);
+  });
+
+  it('modelsForAgent lists the models of the agent provider, scoped by workspace', async () => {
+    const withModels = new AgentsService({
+      store,
+      uow,
+      listModels: async (provider) => [{ id: `${provider}-model`, provider }],
+    });
+    const agent = await withModels.create(WS, body);
+    expect(await withModels.modelsForAgent(WS, agent.id)).toEqual([
+      { id: 'openai-model', provider: 'openai' },
+    ]);
+    expect(await withModels.modelsForAgent('ws-other', agent.id)).toBeUndefined();
+  });
+
   it('returns undefined for an agent of another workspace', async () => {
     const agent = await service.create('ws-other', body);
     expect(await service.update(WS, agent.id, { model: 'gpt-4o' })).toBeUndefined();
@@ -175,6 +239,30 @@ describe('AgentsService', () => {
     expect(appended?.map((l) => [l.skill_id, l.order])).toEqual([['s1', 0], ['s2', 1]]);
     const replaced = await service.setSkills(WS, agent.id, ['s3', 's1']);
     expect(replaced?.map((l) => l.skill_id)).toEqual(['s3', 's1']);
+  });
+
+  it('skill edits lock the agent and run in one unit of work each', async () => {
+    const agent = await service.create(WS, body);
+    await service.setSkills(WS, agent.id, ['s1']);
+    await service.linkSkill(WS, agent.id, 's2');
+    expect(store.locked).toEqual([agent.id, agent.id]);
+    expect(uow.runs).toBe(3);
+  });
+
+  it('rejects skills of another workspace or unknown ids and links nothing', async () => {
+    const agent = await service.create(WS, body);
+    await expect(service.setSkills(WS, agent.id, ['s1', 's-foreign'])).rejects.toMatchObject({
+      statusCode: 422,
+      details: { skill_ids: ['s-foreign'] },
+    });
+    await expect(service.linkSkill(WS, agent.id, 'missing')).rejects.toMatchObject({ statusCode: 422 });
+    expect(await store.skillLinks(agent.id)).toEqual([]);
+  });
+
+  it('skill edits return undefined for an agent of another workspace', async () => {
+    const agent = await service.create('ws-other', body);
+    expect(await service.setSkills(WS, agent.id, ['s1'])).toBeUndefined();
+    expect(await service.linkSkill(WS, agent.id, 's1')).toBeUndefined();
   });
 
   it('listModels degrades to [] when the provider fails', async () => {

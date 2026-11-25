@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: core-needs-io
+expected_outcome: |
+  reviewer-core stays a pure core: no fs, process.env or clone paths. The file contents arrive as
+  a new optional ReviewInput field of plain data, are wrapped with wrapUntrusted in the prompt, and
+  the 400-line cap is a pure function in the core (or applied before the call). The server reads
+  the files in the run executor through the existing GitClient port (or a new port declared in
+  @devdigest/shared and implemented in src/adapters), never with node:fs inside the module. If a
+  shared contract or port changes, both copies of @devdigest/shared are updated. New API is
+  exported only through reviewer-core/src/index.ts, tests use fakes, and the boundary check runs.

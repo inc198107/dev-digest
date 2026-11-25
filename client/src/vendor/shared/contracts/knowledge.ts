@@ -191,3 +191,33 @@ export const AgentSkillLink = z.object({
   order: z.number().int(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+// Request bodies of the agents API: POST /agents, PUT /agents/:id, POST /agents/:id/skills.
+export const AgentCreateBody = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  provider: Provider,
+  model: z.string().min(1),
+  system_prompt: z.string().min(1),
+  output_schema: z.unknown().optional(),
+  strategy: ReviewStrategy.optional(),
+  ci_fail_on: CiFailOn.optional(),
+  repo_intel: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+export type AgentCreateBody = z.infer<typeof AgentCreateBody>;
+
+export const AgentUpdateBody = AgentCreateBody.partial();
+export type AgentUpdateBody = z.infer<typeof AgentUpdateBody>;
+
+// Either replace the whole ordered set (`skill_ids`) or link one skill (`skill_id`).
+export const AgentSkillsBody = z
+  .object({
+    skill_ids: z.array(z.string().uuid()).optional(),
+    skill_id: z.string().uuid().optional(),
+    order: z.number().int().optional(),
+  })
+  .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
+    message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
+  });
+export type AgentSkillsBody = z.infer<typeof AgentSkillsBody>;

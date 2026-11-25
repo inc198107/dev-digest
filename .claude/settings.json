@@ -12,6 +12,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/skills/onion-architecture/scripts/hook-post-edit.mjs\"",
+            "timeout": 60,
+            "statusMessage": "Checking onion architecture rings"
+          }
+        ]
+      }
     ]
   }
 }

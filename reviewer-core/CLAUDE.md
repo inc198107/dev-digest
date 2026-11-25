@@ -22,6 +22,11 @@ npm run typecheck   # this is also the "build": the package never emits JS
 ## Conventions
 - Pure engine: no DB, filesystem, GitHub or `process.env`. The only side effect is the
   injected `LLMProvider`; everything else arrives as arguments.
+- Onion role: this package is the domain + application core of reviews. `src/llm/` is its only
+  infrastructure folder and the only place that may import `openai`. Checked by
+  `bash ../.claude/skills/onion-architecture/scripts/check-boundaries.sh` (skill `onion-architecture`).
+- Tests use their own fakes of `LLMProvider`; don't import `server/src/adapters/*` (known debt:
+  `test/run.test.ts` still imports `server/src/adapters/mocks.ts`).
 - Export new API only through `src/index.ts`; the server imports `@devdigest/reviewer-core`.
 - Contracts come from `@devdigest/shared`, which resolves to `../server/src/vendor/shared`.
 - Untrusted content (diff, PR body, repo-derived text) is always wrapped with `wrapUntrusted`;

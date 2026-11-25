@@ -7,8 +7,7 @@ import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
-import { AgentsRepository } from '../src/modules/agents/repository.js';
-import type { Container } from '../src/platform/container.js';
+import { AgentsRepository, DrizzleAgentsUnitOfWork } from '../src/modules/agents/repository.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -155,16 +154,19 @@ d('GET /agents/:id/versions', () => {
     const { db } = pg.handle;
     // An agent that lives in a DIFFERENT workspace than the request context.
     const [otherWs] = await db.insert(t.workspaces).values({ name: 'other' }).returning();
-    const repo = new AgentsRepository(db);
-    const foreign = await repo.insert({
-      workspaceId: otherWs!.id,
+    // The real adapters, wired by hand the way the routes plugin does.
+    const service = new AgentsService({
+      store: new AgentsRepository(db),
+      uow: new DrizzleAgentsUnitOfWork(db),
+      listModels: async () => [],
+    });
+    const foreign = await service.create(otherWs!.id, {
       name: 'Foreign',
       provider: 'openai',
       model: 'gpt-4o-mini',
-      systemPrompt: 'x',
+      system_prompt: 'x',
     });
 
-    const service = new AgentsService({ db } as unknown as Container);
     const [{ id: defaultWs }] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)

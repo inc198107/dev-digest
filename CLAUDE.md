@@ -77,6 +77,7 @@ node .claude/skills/pr-self-review/scripts/install-hooks.mjs    # once per clone
 - You need architecture or the request flow → `README.md#architecture`, `server/README.md`
 - You add or change an API route → `server/README.md` (API map, error envelope)
 - You touch the review prompt or its output → `docs/agent-prompts/README.md`
+- You add, move or review backend code (`server/`, `reviewer-core/`) → skill `onion-architecture`
 - You are about to open, update or merge a PR → skill `pr-self-review` (`/pr-self-review`)
 - You use repo-intel data → `server/src/modules/repo-intel/README.md`
 - You write tests or touch CI → `TESTING.md`

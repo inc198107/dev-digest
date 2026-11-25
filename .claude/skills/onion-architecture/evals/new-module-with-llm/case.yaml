@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: new-module-with-llm
+expected_outcome: |
+  The plan follows server/CLAUDE.md and the onion rings. The request/response Zod contracts are
+  added to @devdigest/shared first, in both copies (server/src/vendor/shared and
+  client/src/vendor/shared). A new modules/labels/ folder holds a thin routes.ts (Zod
+  params/body/response, getContext, one service call per handler), a service.ts whose constructor
+  takes narrow ports (a labels repository interface, the LLMProvider port) instead of the whole
+  Container, a pure domain.ts for label rules (name normalisation, max five suggestions), a
+  ports.ts, and a Drizzle repository.ts that scopes by workspaceId and maps rows to contract
+  shapes. The LLM call goes through container.llm(...) with a Zod schema for structured output.
+  Wiring happens in the composition root (container getter and the routes plugin), the module is
+  registered in src/modules/index.ts, a migration is generated with pnpm db:generate, tests are
+  split by ring, and the boundary check is run at the end.

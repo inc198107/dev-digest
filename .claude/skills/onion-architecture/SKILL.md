@@ -2,7 +2,7 @@
 name: onion-architecture
 description: Onion Architecture (ports and adapters) for TypeScript backends on Fastify 5, Drizzle ORM, Zod 3, Postgres + pgvector, Vitest and LLM SDKs — decides which ring backend code belongs to and which way dependencies point. Covers domain rules and value objects, use cases (services), ports, Drizzle repositories and row mapping, transactions and unit of work, thin Fastify routes with Zod request/response schemas, error mapping, the composition root and DI, LLM/GitHub/git/filesystem adapters, background jobs, cross-module access, tests per ring, and enforcing boundaries with dependency-cruiser. Use whenever creating, moving, splitting or reviewing backend code (server/, reviewer-core/) — a new module, route, service, repository, adapter, port, table-backed feature or LLM call — or when asking where backend code should go, even if "onion" or "architecture" is not mentioned. Not for Fastify, Drizzle or Zod API details (fastify-best-practices, drizzle-orm-patterns, zod) or table design (postgresql-table-design).
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Onion Architecture for the backend

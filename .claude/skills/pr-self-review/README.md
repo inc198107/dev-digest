@@ -1,6 +1,6 @@
 # pr-self-review
 
-**Version:** 1.0.0 (`metadata.version` in [SKILL.md](SKILL.md)) · **Updated:** 2026-11-25
+**Version:** 1.1.0 (`metadata.version` in [SKILL.md](SKILL.md)) · **Updated:** 2026-11-25
 
 A skill that reviews **every local change of the branch before a pull request is opened**:
 commits since `main` plus staged, unstaged and untracked files. Each changed file goes to the
@@ -102,6 +102,14 @@ SemVer in `metadata.version`.
 Every change bumps the version and adds a changelog entry.
 
 ## Changelog
+
+### 1.1.0 — 2026-11-25
+
+- SKILL.md §8 "When to stop fixing": one fix round and one incremental re-review, then fix only
+  critical findings and regressions from your own fixes; no flip-flopping between lanes that
+  contradict each other; ask the user before a third round. Added after the first real use,
+  where three rounds found 19 → 9 → 5 issues and two lanes gave opposite advice about who opens
+  the transaction in `replaceSkills`.
 
 ### 1.0.0 — 2026-11-25
 

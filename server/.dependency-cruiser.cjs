@@ -70,6 +70,25 @@ module.exports = {
       to: { path: [...INFRASTRUCTURE, PERSISTENCE_LIBRARIES] },
     },
     {
+      name: 'infrastructure-not-to-http',
+      severity: 'error',
+      comment:
+        'Repositories and adapters must not import routes, request/response schemas or request ' +
+        'context. Return contract shapes from @devdigest/shared and let the HTTP ring map them.',
+      from: { path: INFRASTRUCTURE },
+      to: { path: HTTP },
+    },
+    {
+      name: 'root-only-as-types',
+      severity: 'error',
+      comment:
+        'Nothing imports the composition root (platform/container.ts, app.ts, modules/index.ts) at ' +
+        'runtime: it imports everything else. A type-only import (`import type { Container }`) is ' +
+        'fine; a value import creates a cycle and a service locator.',
+      from: { path: '^src/', pathNot: COMPOSITION_ROOT },
+      to: { path: COMPOSITION_ROOT, dependencyTypesNot: ['type-only'] },
+    },
+    {
       name: 'adapters-only-from-composition-root',
       severity: 'error',
       comment:

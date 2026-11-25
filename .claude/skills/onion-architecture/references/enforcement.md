@@ -47,6 +47,8 @@ Config: `server/.dependency-cruiser.cjs`. Type-only imports count (`tsPreCompila
 | `application-not-to-outer-rings` | use case/port → repository, adapters, `db/`, routes, container | declare a port in `ports.ts`, inject the implementation |
 | `core-no-io-libraries` | domain/application → fastify, drizzle, postgres, openai, octokit, simple-git, ast-grep, `fs`, `child_process`, … | put the call behind a port; `zod` is allowed |
 | `http-not-to-infrastructure` | routes/schemas → repositories, adapters, `db/`, drizzle | get the use case's deps from the container; move SQL to a repository |
+| `infrastructure-not-to-http` | repositories, adapters, `db/` → routes, schemas, `modules/_shared` | return contract shapes from `@devdigest/shared`; the HTTP ring maps them |
+| `root-only-as-types` | any `src/` file outside the root → `container.ts`, `app.ts`, `modules/index.ts` (value imports) | `import type { Container }`; receive values through constructor deps |
 | `adapters-only-from-composition-root` | anything but `container.ts`/`app.ts`/adapters → `src/adapters/**` | depend on the port, construct in the container |
 | `adapters-not-to-modules` | adapters → `src/modules/**`, `db/seed` | move the constant into the port or the adapter's config |
 | `no-cross-module-internals` | `modules/a` → `modules/b/*` except `index.ts`/`types.ts` | use b's facade (via the container) |
@@ -67,7 +69,14 @@ Script: `scripts/check-conventions.mjs` (uses the server's `@ast-grep/napi`).
 | `route-throws-errors` | route files | `reply.code(4xx/5xx)` / `reply.status(4xx/5xx)` | throw `NotFoundError`/`ValidationError`/… |
 | `core-no-ambient-io` | domain, application, reviewer-core (not `llm/`) | `process.env`, `Date.now()`, `new Date()`, `Math.random()`, `randomUUID()` | inject `now`/`newId`/config; secrets via `SecretsProvider` |
 | `service-takes-narrow-deps` | application | a constructor parameter typed with `Container` | `deps` object with the ports it needs |
+| `adapter-built-in-root` | everything but the composition root, reviewer-core `llm/` and tests | `new OpenRouterProvider(…)` (any class exported from `reviewer-core/src/llm/`) | depend on `LLMProvider`; construct in `container.ts` |
 | `tests-fake-own-ports` | tests | `vi.mock('drizzle-orm' \| 'openai' \| 'postgres' \| 'octokit' \| 'simple-git' \| 'fastify' …)` | fake the port; integration-test the adapter |
+
+Known gap of the import rules: dependency-cruiser checks direct edges only, and the
+`@devdigest/reviewer-core` and `@devdigest/shared` barrels (`index.ts`) belong to no ring. An
+import through a barrel is therefore judged by the barrel, not by what it re-exports.
+`adapter-built-in-root` closes the dangerous case (constructing reviewer-core's LLM adapter
+outside the root); for anything else imported through a barrel, review the import by hand.
 
 Deliberate exceptions: a comment on the line above the hit,
 `// onion-allow route-declares-response: SSE stream, no JSON body`. Use sparingly and always with

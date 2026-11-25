@@ -1,6 +1,6 @@
 # onion-architecture
 
-**Version:** 1.0.0 (`metadata.version` in [SKILL.md](SKILL.md)) · **Updated:** 2026-11-25
+**Version:** 1.1.0 (`metadata.version` in [SKILL.md](SKILL.md)) · **Updated:** 2026-11-25
 
 A skill that makes the agent build and review **backend code as an Onion (ports and adapters)**
 on this stack: Fastify 5, Drizzle ORM 0.38, Zod 3, Postgres 16 + pgvector, Vitest 2, and LLM
@@ -81,6 +81,20 @@ SemVer in `metadata.version` (the Agent Skills spec has no top-level `version`).
 Every change bumps the version and adds a changelog entry.
 
 ## Changelog
+
+### 1.1.0 — 2026-11-25
+
+- New dependency rules `infrastructure-not-to-http` and `root-only-as-types` (two directions of
+  the ring table that were not enforced) and convention rule `adapter-built-in-root` (reviewer-core
+  LLM adapters arrive through a barrel that dependency-cruiser cannot see past). None of them
+  fires on the current code, so the baselines are unchanged. The barrel gap is documented in
+  enforcement.md §4.
+- Reference module fixes from the `pr-self-review` runs: `snapshotVersion` is workspace-scoped;
+  `update`, `setSkills` and `linkSkill` run in one unit of work that locks the agent row
+  (`getForUpdate`, `FOR NO KEY UPDATE`); only a config change writes the version; linked skills
+  must belong to the agent's workspace (`knownSkillIds`, pure `unknownSkillIds`, 422 otherwise);
+  `GET /agents/:id/models` calls one use case (`modelsForAgent`); a corrupt snapshot is a 500,
+  not a 422; an `agentsStoreContract` suite runs against the fake and Postgres.
 
 ### 1.0.0 — 2026-11-25
 

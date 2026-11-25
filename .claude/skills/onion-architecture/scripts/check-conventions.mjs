@@ -8,6 +8,8 @@
  *   core-no-ambient-io        no process.env / Date.now() / new Date() / Math.random() /
  *                             randomUUID() in domain or application code (inject them)
  *   service-takes-narrow-deps use-case constructors don't take the whole Container
+ *   adapter-built-in-root     reviewer-core LLM adapters (src/llm/) are `new`ed only in the
+ *                             composition root (they arrive through a barrel import)
  *   tests-fake-own-ports      tests don't vi.mock() libraries we don't own (drizzle, openai…)
  *
  * Rings come from server/.onion-rings.cjs. Existing violations live in
@@ -51,6 +53,27 @@ const isCore = (() => {
 })();
 const isApplication = matcher(rings.APPLICATION);
 const isTest = matcher(rings.TESTS);
+const isCompositionRoot = matcher(rings.COMPOSITION_ROOT);
+const isCoreInfra = matcher(rings.REVIEWER_CORE_INFRA);
+
+/**
+ * Class names exported from reviewer-core's infrastructure folder (src/llm/). They reach the
+ * server through the `@devdigest/reviewer-core` barrel, which dependency-cruiser cannot see
+ * past, so their construction is checked here instead.
+ * @returns {Set<string>} Adapter class names.
+ */
+function reviewerCoreAdapterClasses() {
+  const dir = join(ROOT, 'reviewer-core', 'src', 'llm');
+  const names = new Set();
+  if (!existsSync(dir)) return names;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.ts')) continue;
+    const text = readFileSync(join(dir, name), 'utf8');
+    for (const m of text.matchAll(/export\s+class\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  }
+  return names;
+}
+const CORE_ADAPTERS = reviewerCoreAdapterClasses();
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
 const FASTIFY_INSTANCE = /^(app|appBase|fastify|instance|server|scoped)$/;
@@ -142,6 +165,19 @@ const RULES = [
             inside: { kind: 'method_definition', regex: '^constructor', stopBy: 'end' },
           },
         })
+        .map(hit),
+  },
+  {
+    id: 'adapter-built-in-root',
+    message:
+      'reviewer-core LLM adapters (src/llm/, e.g. OpenRouterProvider) are constructed only by the ' +
+      'composition root (platform/container.ts). Depend on the LLMProvider port and receive it ' +
+      'through constructor deps.',
+    applies: (rel) => !isCompositionRoot(rel) && !isCoreInfra(rel) && !isTest(rel),
+    find: (root) =>
+      root
+        .findAll('new $C($$$ARGS)')
+        .filter((n) => CORE_ADAPTERS.has(n.getMatch('C')?.text() ?? ''))
         .map(hit),
   },
   {

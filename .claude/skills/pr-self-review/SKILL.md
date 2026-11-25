@@ -3,7 +3,7 @@ name: pr-self-review
 description: Self-reviews every local change of the current branch before a pull request is opened — commits since main plus staged, unstaged and untracked files — by routing each changed file to the project skills that own it (UI skills on client/ files, onion/Fastify/Drizzle/Postgres skills on server/ and reviewer-core/ files, security, zod and the CLAUDE.md rules across both), one subagent per skill, plus onion boundary checks, typecheck and unit tests of the touched packages. Records a PASS/BLOCK verdict; any unwaived critical finding blocks `gh pr create`, `gh pr merge` and `git push` through the gate hooks. Use before opening or updating a PR, when the pr-self-review gate blocks a command, or when the user asks to self-review, pre-review or check changes before a PR ("self review", "review my changes before PR", "перевір зміни перед PR", "проверь изменения перед PR").
 argument-hint: "[--base <ref>] [--incremental]"
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # PR self-review
@@ -98,6 +98,7 @@ Reply in the user's chat language (code, paths and ids stay as they are):
 - On BLOCK: list what blocks, offer to fix it, and say the gate will stop `gh pr create`,
   `gh pr merge` and `git push` until a re-review passes. After fixes, re-run with
   `--incremental` (unchanged files keep their earlier findings; checks always run again).
+  How many fix rounds to run: §8.
 - Routing notes: unrouted or missing skills and a proposed `routing.json` change.
 
 ## 6. Waivers (only on the user's explicit request)
@@ -118,6 +119,23 @@ The PreToolUse hook (`gh pr create|merge`) and the git pre-push hook print why:
 | The review is stale | Files changed after the review: run `plan.mjs --incremental` and continue from §2. |
 | Unresolved critical findings | Fix them (with the user's agreement) and re-review, or ask whether to waive. |
 | Commit not in the local repository | Fetch and check out the PR branch, review it there. |
+
+## 8. When to stop fixing
+
+Reviewers are asked to find problems, so every round finds some minor ones; "zero findings" is
+never the goal. The gate needs only no unwaived critical.
+
+1. **One fix round, one re-review.** Fix what the user asked for (by default: critical and
+   major), then run `plan.mjs --incremental` once.
+2. **After that re-review, fix only** critical findings and regressions: findings of major or
+   above that your own fixes introduced. Do not start another round for new minor or nit
+   findings; list them for the user and let them choose.
+3. **Do not flip-flop between lanes.** When a lane asks to undo what another lane asked for
+   (one wants the repository to open a transaction, the next wants the use case to own it),
+   decide once by precedence (module `CLAUDE.md` → the skill that owns the concern → the
+   rest), apply it, and say in the report which lane you followed and why.
+4. **Stop and ask the user** when a third round looks necessary, or when a fix needs a decision
+   outside the code: approving a baseline, committing or ignoring local files, a waiver.
 
 ## Files
 

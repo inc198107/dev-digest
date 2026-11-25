@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: routes-mixed-diff
+expected_outcome: |
+  The answer follows the pr-self-review workflow for a plan that mixes client and server files.
+  It starts one reviewer subagent per lane in the plan, all in one message, plus run-checks.mjs
+  in the background, and includes the built-in project-rules lane. Each lane gets only its own
+  files: UI skills (frontend-ui-architecture, react-best-practices, next-best-practices) only
+  the client files, onion-architecture/fastify/drizzle only the server files; it does not add
+  UI skills to server files or the reverse. The lane prompts follow references/reviewer-prompt.md:
+  load the skill with the Skill tool, read module CLAUDE.md/INSIGHTS.md, review only the diff
+  against the base SHA, stay read-only, and return a JSON array with severity, file, line,
+  title, scenario and fix. For the unrouted skill css-guide it reads the description, decides
+  whether it applies to the changed .tsx file and proposes a routing.json entry to the user
+  instead of editing routing.json itself.

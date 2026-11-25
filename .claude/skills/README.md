@@ -17,6 +17,10 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
+| [pr-self-review](pr-self-review/SKILL.md) | Workflow | Pre-PR review of all local changes: routes each file to the skills above (one subagent per skill), runs onion checks, typecheck and unit tests; a critical finding blocks `gh pr create`/`merge` and `git push` via hooks |
+
+When you add a skill, add it to [pr-self-review/routing.json](pr-self-review/routing.json)
+(`lanes` with the files it reviews, or `ignore`); the self-review reports skills it cannot route.
 
 ## What Are Skills?
 

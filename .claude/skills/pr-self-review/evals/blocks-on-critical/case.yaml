@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: blocks-on-critical
+expected_outcome: |
+  The answer finishes a self-review from the lane results. It keeps the security finding as
+  critical because the quoted code reads the OpenRouter key from process.env in a new adapter,
+  which the root CLAUDE.md forbids (secrets only through SecretsProvider), and states a concrete
+  scenario. It downgrades the onion-architecture "critical" to major (or drops it) because it
+  cites no line, quotes no code and gives no scenario, as severity.md requires for critical. It
+  merges the duplicate security/project-rules report of the same line into one finding with
+  alsoReportedBy. The final verdict is BLOCK with one critical finding; it explains that
+  gh pr create, gh pr merge and git push stay blocked until a re-review passes, offers the fix
+  (take the key from SecretsProvider through the container) and does not waive anything.

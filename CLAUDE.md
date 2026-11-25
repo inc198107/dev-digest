@@ -38,6 +38,7 @@ cd server && pnpm exec vitest run .it.test                      # integration, n
 cd client && pnpm test && pnpm typecheck
 cd reviewer-core && npm test && npm run typecheck
 ./scripts/e2e.sh                     # hermetic e2e stack on ports 5433/3101/3100
+node .claude/skills/pr-self-review/scripts/install-hooks.mjs    # once per clone: pre-push gate
 ```
 
 ## Non-default conventions
@@ -61,6 +62,9 @@ cd reviewer-core && npm test && npm run typecheck
 - Review run state (RunBus) and the job queue live in API memory: one API instance per DB,
   and a restart orphans running runs (reaped on next boot).
 - Windows: run `scripts/*.sh` from Git Bash, not PowerShell.
+- `gh pr create`, `gh pr merge` and `git push` are gated: they fail until `/pr-self-review`
+  records a PASS for the exact content being pushed (any later edit makes it stale). Never
+  bypass the gate; only the user may waive a finding or push with `--no-verify`.
 
 ## Do not touch
 - Applied migrations in `server/src/db/migrations/`; generate new ones with `pnpm db:generate`.
@@ -73,6 +77,7 @@ cd reviewer-core && npm test && npm run typecheck
 - You need architecture or the request flow → `README.md#architecture`, `server/README.md`
 - You add or change an API route → `server/README.md` (API map, error envelope)
 - You touch the review prompt or its output → `docs/agent-prompts/README.md`
+- You are about to open, update or merge a PR → skill `pr-self-review` (`/pr-self-review`)
 - You use repo-intel data → `server/src/modules/repo-intel/README.md`
 - You write tests or touch CI → `TESTING.md`
 - You start a feature → its spec in `specs/` (cross-module) or `<module>/specs/`;

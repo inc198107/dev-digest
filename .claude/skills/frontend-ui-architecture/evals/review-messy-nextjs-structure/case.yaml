@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: review-messy-nextjs-structure
+expected_outcome: |
+  The review turns the dashboard page into a thin route and moves fetching into a data layer
+  (API client plus TanStack Query options or hooks). It splits utils/helpers.ts by purpose and
+  domain (billing rules into a billing domain module, formatting into purpose-named files,
+  buildProjectQuery into the projects data layer, cn into lib). It splits utils/constants.ts:
+  STRIPE_SECRET_KEY is a secret that must leave client-reachable code for a server-only env
+  module, the ROLES enum becomes an as-const object or union, page titles go to i18n or
+  metadata, colours go to design tokens. The flat components folder is split into shared UI
+  primitives and feature components. The billing to projects deep import is flagged as a
+  boundary violation, and lint enforcement of boundaries is suggested.

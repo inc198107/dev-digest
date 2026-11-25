@@ -16,11 +16,13 @@
 <!-- Conventions and architectural decisions not stated in CLAUDE.md or README.md. -->
 - 2026-11-25 · src/modules/reviews/run-executor.ts:243-248, src/db/schema/runs.ts:33 · Treat run cost as persisted: `completeAgentRun` writes reviewer-core's `ReviewOutcome.costUsd` to `agent_runs.cost_usd` (re-added on `feat/run-cost`, see Session Notes); the L01 removal in `d45ab0d` is history only. (replaces 2026-11-21: "missing run cost is intentional" — verified this session: run-executor.ts:248 passes `costUsd`, schema/runs.ts:33 declares `cost_usd`)
 - 2026-11-21 · src/modules/reviews/repository.ts · When adding a field to `createAgentRun` / `completeAgentRun`, edit the inline `values` type in both the facade `repository.ts` and `repository/run.repo.ts` — the facade re-declares the type instead of deriving it from runRepo.
+- 2026-11-25 · src/app.ts:135-150 (error handler) · Validate stored or upstream data with `safeParse` and throw a plain `Error` or an `AppError`, never `Schema.parse()` — the handler maps any thrown ZodError (matched by shape) to 422 `validation_error` "Request validation failed" with the issues as `details`, so a corrupt DB row is reported as bad client input (fixed this way in `agents/repository.ts` `toAgentVersion`).
 
 ## Tool & Library Notes
 <!-- Dependency quirks: versions, flags, platform issues. -->
 - 2026-11-25 · server/ with pnpm v11 · Call binaries as `./node_modules/.bin/<tool>` when you pipe their output — `pnpm exec` first prints "Already up to date / Done in 27ms using pnpm v11.22.0" to stdout, so `pnpm exec depcruise --output-type json | node -e 'JSON.parse(…)'` failed with `Unexpected token 'A', "Already up"…`.
 - 2026-11-25 · fastify-type-provider-zod 4.0.x `serializerCompiler` (dist/src/core.js:89) · Before adding a `response` schema to an existing route, check that every returned value satisfies it (enums like `provider`, `.int()` numbers, nullish fields) — the serializer safeParses the payload and throws `ResponseSerializationError`, which `app.ts` turns into a 500, so a schema stricter than the data breaks a working route; fields not in the schema are dropped silently.
+- 2026-11-25 · zod 3.25.76 `z.union` of `.strict()` objects (`AgentSkillsBody`) · Don't expect the union's `errorMap` message for a body that mixes both shapes — it fails with the first option's `unrecognized_keys` ("Unrecognized key(s) in object: 'skill_id'"); the custom `invalid_union` message appears only when no option matches at all (e.g. `{}`). Checked with node against server/node_modules/zod.
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->

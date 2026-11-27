@@ -1,7 +1,15 @@
 import React from "react";
 import { Icon } from "../icons";
 
-/** REAL controlled <select>. */
+/**
+ * REAL controlled <select>. The `<select>` itself is the visible box, so the option
+ * list (styled through `.dd-select` in `styles.css`) opens aligned with it.
+ * @param props.value - the selected option value
+ * @param props.onChange - called with the newly selected value
+ * @param props.options - plain values, or value/label pairs
+ * @param props.mono - render the value and options in the monospace font
+ * @returns the select box with a trailing chevron
+ */
 export function SelectInput({
   value,
   onChange,
@@ -14,30 +22,21 @@ export function SelectInput({
   mono?: boolean;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 12px",
-        borderRadius: 7,
-        border: "1px solid var(--border-strong)",
-        background: "var(--bg-elevated)",
-        position: "relative",
-      }}
-    >
+    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
       <select
-        className={mono ? "mono" : undefined}
+        className={mono ? "dd-select mono" : "dd-select"}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
         style={{
           flex: 1,
+          minWidth: 0,
+          padding: "10px 36px 10px 12px",
+          borderRadius: 7,
+          border: "1px solid var(--border-strong)",
+          background: "var(--bg-elevated)",
           fontSize: 14,
           color: "var(--text-primary)",
-          background: "transparent",
-          border: "none",
           outline: "none",
-          appearance: "none",
           cursor: "pointer",
         }}
       >
@@ -51,7 +50,10 @@ export function SelectInput({
           );
         })}
       </select>
-      <Icon.ChevronsUpDown size={14} style={{ color: "var(--text-muted)", pointerEvents: "none" }} />
+      <Icon.ChevronsUpDown
+        size={14}
+        style={{ position: "absolute", right: 12, color: "var(--text-muted)", pointerEvents: "none" }}
+      />
     </div>
   );
 }

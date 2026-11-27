@@ -5,10 +5,39 @@ type SelectOption = string | { value: string; label: string };
 const optValue = (o: SelectOption) => (typeof o === "string" ? o : o.value);
 const optLabel = (o: SelectOption) => (typeof o === "string" ? o : o.label);
 
+/** Gap between the trigger and the list (px). */
+const GAP = 6;
+/** Height of the filter row plus the list padding and borders (px). */
+const CHROME_HEIGHT = 56;
+
+/**
+ * Where the open list sits, in viewport coordinates. Both `top` and `bottom` are
+ * always set: dropping one from the inline style would expose the UA
+ * `[popover] { inset: 0 }` rule and pin the list to the viewport edge.
+ */
+type Placement = { left: number; width: number; top: number | "auto"; bottom: number | "auto" };
+
+/**
+ * Place the list under the trigger, or above it when the space below is short.
+ * @param trigger - the trigger's viewport rect
+ * @param listHeight - the tallest the list can get (px)
+ * @returns fixed-position coordinates for the list
+ */
+function placeList(trigger: DOMRect, listHeight: number): Placement {
+  const below = window.innerHeight - trigger.bottom;
+  const flip = below < listHeight + GAP && trigger.top > below;
+  const x = { left: trigger.left, width: trigger.width };
+  return flip
+    ? { ...x, top: "auto", bottom: window.innerHeight - trigger.top + GAP }
+    : { ...x, top: trigger.bottom + GAP, bottom: "auto" };
+}
+
 /**
  * Searchable single-select — same options API as SelectInput, but with a filter
  * box + keyboard nav, for long lists (e.g. the 300+ OpenRouter models). Filters
- * by value and label; Enter selects, ↑/↓ move, Esc closes.
+ * by value and label; Enter selects, ↑/↓ move, Esc closes. The open list is a
+ * manual popover in the top layer, fixed to the trigger, so a scrolling container
+ * such as the Modal body does not clip it.
  */
 export function SearchableSelect({
   value,
@@ -28,8 +57,33 @@ export function SearchableSelect({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [hi, setHi] = React.useState(0);
+  const [place, setPlace] = React.useState<Placement | null>(null);
   const ref = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Show the list in the top layer and keep it on the trigger while the page or
+  // a scrolling ancestor moves. jsdom has no popover API: the list stays inline.
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const update = () => {
+      const trigger = triggerRef.current;
+      if (trigger) setPlace(placeList(trigger.getBoundingClientRect(), maxHeight + CHROME_HEIGHT));
+    };
+    update();
+    const shown = typeof list?.showPopover === "function";
+    if (shown) list.showPopover();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      // A list already unmounted (closing) left the top layer with its node.
+      if (shown && list.isConnected) list.hidePopover();
+    };
+  }, [open, maxHeight]);
 
   React.useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -80,6 +134,7 @@ export function SearchableSelect({
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <div
+        ref={triggerRef}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: "flex",
@@ -109,11 +164,15 @@ export function SearchableSelect({
       </div>
       {open && (
         <div
+          ref={listRef}
+          popover="manual"
           style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            right: 0,
+            position: "fixed",
+            inset: "auto",
+            margin: 0,
+            padding: 0,
+            ...place,
+            color: "inherit",
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-strong)",
             borderRadius: 9,

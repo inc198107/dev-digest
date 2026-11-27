@@ -33,6 +33,7 @@ import {
   FormField,
   TextInput,
   SelectInput,
+  SearchableSelect,
   Textarea,
   Checkbox,
   Sparkline,
@@ -175,6 +176,11 @@ export function Gallery() {
         <div style={s.w220}>
           <FormField label="Model">
             <SelectInput value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} />
+          </FormField>
+        </div>
+        <div style={s.w220}>
+          <FormField label="Model (searchable)">
+            <SearchableSelect value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} />
           </FormField>
         </div>
         <div style={s.w280}>

@@ -3,13 +3,20 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, Modal, FormField, TextInput, SelectInput, Textarea } from "@devdigest/ui";
+import { Button, Modal, FormField, TextInput, SelectInput, SearchableSelect, Textarea } from "@devdigest/ui";
 import type { Provider } from "@devdigest/shared";
-import { useCreateAgent } from "../../../../../../lib/hooks/agents";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODAL_WIDTH, PROVIDER_OPTIONS } from "./constants";
+import { useCreateAgent, useProviderModels } from "../../../../../../lib/hooks/agents";
+import { toModelOptions, withCurrentModel } from "../../../../../../lib/model-label";
+import { DEFAULT_MODELS, DEFAULT_PROVIDER, MODAL_WIDTH, PROVIDER_OPTIONS } from "./constants";
 import { s } from "./styles";
 
-/** Create-agent modal — name/description/provider/model/system-prompt. */
+/**
+ * Create-agent modal — name/description/provider/model/system-prompt. The model
+ * picker lists the chosen provider's live models; switching the provider resets
+ * the model to that provider's default (or to none, so the user picks one).
+ * @param props.onClose - closes the modal (cancel, backdrop, or after creating)
+ * @returns the modal
+ */
 export function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const t = useTranslations("agents");
   const router = useRouter();
@@ -17,8 +24,18 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [provider, setProvider] = React.useState<Provider>(DEFAULT_PROVIDER);
-  const [model, setModel] = React.useState(DEFAULT_MODEL);
+  const [model, setModel] = React.useState(DEFAULT_MODELS[DEFAULT_PROVIDER] ?? "");
   const [systemPrompt, setSystemPrompt] = React.useState(t("create.defaultSystemPrompt"));
+
+  const { data: models } = useProviderModels(provider);
+  const modelOptions = withCurrentModel(toModelOptions(models), model);
+  // Empty list after load = the provider's API key is missing or invalid.
+  const noModels = models !== undefined && models.length === 0;
+
+  const changeProvider = (next: Provider) => {
+    setProvider(next);
+    setModel(DEFAULT_MODELS[next] ?? "");
+  };
 
   const submit = async () => {
     const agent = await create.mutateAsync({
@@ -43,7 +60,7 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
           <Button kind="ghost" onClick={onClose}>
             {t("create.cancel")}
           </Button>
-          <Button kind="primary" icon="Plus" onClick={submit} disabled={create.isPending}>
+          <Button kind="primary" icon="Plus" onClick={submit} disabled={create.isPending || !model}>
             {create.isPending ? t("create.creating") : t("create.create")}
           </Button>
         </div>
@@ -63,12 +80,21 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
         <FormField label={t("create.fields.provider")}>
           <SelectInput
             value={provider}
-            onChange={(v) => setProvider(v as Provider)}
+            onChange={(v) => changeProvider(v as Provider)}
             options={[...PROVIDER_OPTIONS]}
           />
         </FormField>
-        <FormField label={t("create.fields.model")}>
-          <TextInput value={model} onChange={setModel} mono />
+        <FormField
+          label={t("create.fields.model")}
+          required
+          hint={noModels ? t("config.modelEmptyHint", { provider }) : t("config.modelHint")}
+        >
+          <SearchableSelect
+            value={model}
+            onChange={setModel}
+            options={modelOptions}
+            placeholder={t("config.modelSearch")}
+          />
         </FormField>
         <FormField label={t("create.fields.systemPrompt")}>
           <Textarea value={systemPrompt} onChange={setSystemPrompt} rows={6} mono />

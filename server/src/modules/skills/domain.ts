@@ -1,5 +1,19 @@
-import type { Skill, SkillIgnoredFile, SkillIgnoredReason, SkillUpdateBody } from '@devdigest/shared';
-import { MAX_SKILL_BODY_CHARS, MAX_SKILL_DESCRIPTION_CHARS, MAX_SKILL_NAME_CHARS, SkillType } from '@devdigest/shared';
+import type {
+  Skill,
+  SkillCategoryCount,
+  SkillIgnoredFile,
+  SkillIgnoredReason,
+  SkillStats,
+  SkillStatsSummary,
+  SkillUpdateBody,
+} from '@devdigest/shared';
+import {
+  MAX_SKILL_BODY_CHARS,
+  MAX_SKILL_DESCRIPTION_CHARS,
+  MAX_SKILL_NAME_CHARS,
+  MAX_SKILL_NOTE_CHARS,
+  SkillType,
+} from '@devdigest/shared';
 import {
   ARCHIVE_EXTENSIONS,
   BINARY_EXTENSIONS,
@@ -55,6 +69,103 @@ export function planSkillVersion(
 ): SkillVersionPlan {
   const bump = isModelVisibleChange(existing, patch);
   return { bump, version: bump ? existing.version + 1 : existing.version };
+}
+
+/**
+ * Clean the "what changed" note of a version: invisible characters removed, whitespace runs
+ * collapsed to one space, capped at the contract limit. The note is metadata: it never reaches
+ * the prompt and never decides whether a version is created.
+ * @param raw The note as sent, if any.
+ * @returns The note to store, or null when none was sent or nothing visible remains.
+ */
+export function cleanVersionNote(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null) return null;
+  const note = stripHiddenCharacters(raw).text.replace(/\s+/g, ' ').trim().slice(0, MAX_SKILL_NOTE_CHARS).trim();
+  return note === '' ? null : note;
+}
+
+/**
+ * @param version The version whose body a restore copies.
+ * @returns The note stored with the version the restore creates.
+ */
+export function restoreNote(version: number): string {
+  return `Restored from v${version}`;
+}
+
+/** Raw counts of one skill over the stats window, as the stats reader returns them. */
+export interface SkillUsageCounts {
+  skillId: string;
+  /** Agents that link the skill now. */
+  usedBy: number;
+  /** Finished runs in the window whose prompt loaded the skill. */
+  skillRuns: number;
+  /** Findings of those runs. */
+  findings: number;
+  /** Of those findings, accepted ones. */
+  accepted: number;
+  /** Of those findings, dismissed ones. */
+  dismissed: number;
+}
+
+/**
+ * A share in [0, 1].
+ * @param part Counted items.
+ * @param whole All items.
+ * @returns part / whole, clamped to [0, 1]; null when `whole` is 0 (nothing to measure).
+ */
+export function ratio(part: number, whole: number): number | null {
+  if (!(whole > 0)) return null;
+  return Math.min(1, Math.max(0, part / whole));
+}
+
+/**
+ * How often a skill was in the prompt.
+ * @param skillRuns Runs in the window that loaded the skill.
+ * @param runs All finished runs of the workspace in the window.
+ * @returns skillRuns / runs, or null without runs.
+ */
+export function pullFrequency(skillRuns: number, runs: number): number | null {
+  return ratio(skillRuns, runs);
+}
+
+/**
+ * How many decided findings of a skill's runs were accepted. Undecided findings do not count.
+ * @param accepted Accepted findings.
+ * @param dismissed Dismissed findings.
+ * @returns accepted / (accepted + dismissed), or null when none was decided.
+ */
+export function acceptRate(accepted: number, dismissed: number): number | null {
+  return ratio(accepted, accepted + dismissed);
+}
+
+/**
+ * @param counts The skill's counts over the window.
+ * @param runs Finished runs of the workspace in the window.
+ * @returns The card numbers of the skill.
+ */
+export function toSkillStatsSummary(counts: SkillUsageCounts, runs: number): SkillStatsSummary {
+  return {
+    skill_id: counts.skillId,
+    used_by: counts.usedBy,
+    pull_frequency: pullFrequency(counts.skillRuns, runs),
+    accept_rate: acceptRate(counts.accepted, counts.dismissed),
+  };
+}
+
+/**
+ * @param counts The skill's counts over the window.
+ * @param runs Finished runs of the workspace in the window.
+ * @param categories Findings of the skill's runs per category.
+ * @returns The skill's stats.
+ */
+export function toSkillStats(counts: SkillUsageCounts, runs: number, categories: SkillCategoryCount[]): SkillStats {
+  return {
+    ...toSkillStatsSummary(counts, runs),
+    runs_30d: runs,
+    skill_runs_30d: counts.skillRuns,
+    findings_30d: counts.findings,
+    findings_by_category: categories,
+  };
 }
 
 /**

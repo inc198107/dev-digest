@@ -1,10 +1,13 @@
 import type {
+  CommunitySkillSearchResult,
   Skill,
+  SkillCategoryCount,
   SkillCreateBody,
   SkillListItem,
   SkillUpdateBody,
   SkillVersion,
 } from '@devdigest/shared';
+import type { SkillUsageCounts } from './domain.js';
 
 /**
  * Ports of the skills use cases. Declared here, in the core's vocabulary (contract shapes, no
@@ -16,6 +19,12 @@ import type {
 export interface NewSkill extends Omit<SkillCreateBody, 'source'> {
   source: NonNullable<SkillCreateBody['source']>;
 }
+
+/**
+ * The fields of an update that the `skills` row stores. The version note is not one of them:
+ * it belongs to the snapshot (`snapshotVersion`), never to the skill.
+ */
+export type SkillPatch = Omit<SkillUpdateBody, 'note'>;
 
 /** Persistence of skills and their body snapshots. */
 export interface SkillsStore {
@@ -57,7 +66,7 @@ export interface SkillsStore {
   update(
     workspaceId: string,
     id: string,
-    patch: SkillUpdateBody,
+    patch: SkillPatch,
     version?: number,
   ): Promise<Skill | undefined>;
   /**
@@ -68,16 +77,18 @@ export interface SkillsStore {
    */
   delete(workspaceId: string, id: string): Promise<boolean>;
   /**
-   * Record a body as an immutable snapshot. Idempotent per version.
+   * Record a body as an immutable snapshot. Idempotent per version: a second call for the same
+   * version changes nothing, note included.
    * @param skillId Skill id (already checked to be in the caller's workspace).
    * @param version Version number of the snapshot.
    * @param body The body at that version.
+   * @param note What changed in this version; omitted or null, the snapshot has no note.
    * @returns Resolves when stored.
    */
-  snapshotVersion(skillId: string, version: number, body: string): Promise<void>;
+  snapshotVersion(skillId: string, version: number, body: string, note?: string | null): Promise<void>;
   /**
    * @param skillId Skill id.
-   * @returns Body snapshots, newest first.
+   * @returns Body snapshots with their notes, newest first.
    */
   listVersions(skillId: string): Promise<SkillVersion[]>;
   /**
@@ -105,6 +116,47 @@ export interface AgentSkillsReader {
    * @returns The agent's linked skills that are enabled, in link order.
    */
   enabledForAgent(workspaceId: string, agentId: string): Promise<Skill[]>;
+}
+
+/** Usage counts of a workspace's skills over the stats window. */
+export interface SkillUsageWindow {
+  /** Finished review runs of the workspace in the window. */
+  runs: number;
+  /** One entry per requested skill of the workspace, by skill name. */
+  skills: SkillUsageCounts[];
+}
+
+/**
+ * Reads how skills were used by review runs (Skills Lab stats). The window is the last
+ * `SKILL_STATS_WINDOW_DAYS` days by the database clock; only finished runs count, and a run
+ * counts for a skill when its trace recorded the skill's prompt block.
+ */
+export interface SkillStatsReader {
+  /**
+   * One read for any number of skills (no query per skill).
+   * @param workspaceId Tenant scope.
+   * @param skillId Only this skill; omitted, every skill of the workspace.
+   * @returns The workspace's run count and the counts per skill; `skills` is empty when the
+   *   skill is not in this workspace.
+   */
+  usage(workspaceId: string, skillId?: string): Promise<SkillUsageWindow>;
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillId Skill id.
+   * @returns Findings of the skill's runs in the window per category, most frequent first.
+   */
+  findingsByCategory(workspaceId: string, skillId: string): Promise<SkillCategoryCount[]>;
+}
+
+/** Finds community skills (`SKILL.md` files) in public GitHub repositories. */
+export interface CommunitySkillSearch {
+  /**
+   * @param query Search text (2–100 characters).
+   * @returns The hits, or `{ configured: false, items: [] }` when no GitHub token is set.
+   * @throws ExternalServiceError when GitHub cannot be reached, refuses the token, rate-limits
+   *   the search or does not answer in time.
+   */
+  search(query: string): Promise<CommunitySkillSearchResult>;
 }
 
 /** One file entry of an archive. */

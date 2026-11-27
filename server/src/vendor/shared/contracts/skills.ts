@@ -35,6 +35,9 @@ export type SkillCreateSource = z.infer<typeof SkillCreateSource>;
 /** Most evidence paths stored with a skill. */
 export const MAX_SKILL_EVIDENCE_FILES = 50;
 
+/** Longest "what changed" note of a skill version (characters). */
+export const MAX_SKILL_NOTE_CHARS = 200;
+
 /** Skill body: Markdown, not blank. */
 const SkillBody = z
   .string()
@@ -57,11 +60,18 @@ export const SkillCreateBody = z
   .strict();
 export type SkillCreateBody = z.infer<typeof SkillCreateBody>;
 
-/** PUT /skills/:id: any subset of the editable fields, at least one. */
+/**
+ * PUT /skills/:id: any subset of the editable fields, at least one. `note` ("what changed") is
+ * stored with the version the change creates; it is metadata, never sent to the model, and does
+ * not count as a change on its own.
+ */
 export const SkillUpdateBody = SkillCreateBody.omit({ source: true, evidence_files: true })
+  .extend({ note: z.string().trim().max(MAX_SKILL_NOTE_CHARS).optional() })
   .partial()
   .strict()
-  .refine((patch) => Object.keys(patch).length > 0, { message: 'Provide at least one field to change' });
+  .refine((patch) => Object.keys(patch).some((key) => key !== 'note'), {
+    message: 'Provide at least one field to change',
+  });
 export type SkillUpdateBody = z.infer<typeof SkillUpdateBody>;
 
 /** An agent that links a skill. */
@@ -82,9 +92,79 @@ export const SkillVersion = z.object({
   skill_id: z.string(),
   version: z.number().int(),
   body: z.string(),
+  /** What changed in this version, as the author described it; null when no note was given. */
+  note: z.string().nullish(),
   created_at: z.string(),
 });
 export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/** Findings of one category. */
+export const SkillCategoryCount = z.object({
+  category: z.string(),
+  count: z.number().int(),
+});
+export type SkillCategoryCount = z.infer<typeof SkillCategoryCount>;
+
+/**
+ * GET /skills/:id/stats: how the skill was used in the last 30 days. A review run counts for the
+ * skill when its prompt loaded the skill (the run trace's skill blocks); its findings are the
+ * run's findings, so they are attributed to every skill that run loaded.
+ */
+export const SkillStats = z.object({
+  skill_id: z.string(),
+  /** Agents that link the skill now. */
+  used_by: z.number().int(),
+  /** Review runs of the workspace in the window. */
+  runs_30d: z.number().int(),
+  /** Of those, runs whose prompt loaded this skill. */
+  skill_runs_30d: z.number().int(),
+  /** skill_runs_30d / runs_30d; null without runs. */
+  pull_frequency: z.number().min(0).max(1).nullable(),
+  /** Accepted / (accepted + dismissed) findings of the skill's runs; null when none was decided. */
+  accept_rate: z.number().min(0).max(1).nullable(),
+  /** Findings of the skill's runs in the window. */
+  findings_30d: z.number().int(),
+  findings_by_category: z.array(SkillCategoryCount),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
+
+/** GET /skills/stats: the card numbers of every skill of the workspace. */
+export const SkillStatsSummary = SkillStats.pick({
+  skill_id: true,
+  used_by: true,
+  pull_frequency: true,
+  accept_rate: true,
+});
+export type SkillStatsSummary = z.infer<typeof SkillStatsSummary>;
+
+/** GET /skills/community?q=: search text for community skills on GitHub. */
+export const CommunitySkillQuery = z.object({ q: z.string().trim().min(2).max(100) }).strict();
+export type CommunitySkillQuery = z.infer<typeof CommunitySkillQuery>;
+
+/** One `SKILL.md` found in a public GitHub repository. */
+export const CommunitySkillHit = z.object({
+  /** Folder name of the SKILL.md (`owasp-review`), or the repo name for a root file. */
+  name: z.string(),
+  /** Repository description. */
+  description: z.string().nullable(),
+  /** `owner/name`. */
+  repo: z.string(),
+  /** Path of the SKILL.md in the repository. */
+  path: z.string(),
+  /** github.com URL of the file; the URL import reads it raw. */
+  url: z.string(),
+  stars: z.number().int(),
+  /** Main language of the repository. */
+  language: z.string().nullable(),
+});
+export type CommunitySkillHit = z.infer<typeof CommunitySkillHit>;
+
+/** Result of a community search; `configured` is false when no GitHub token is set. */
+export const CommunitySkillSearchResult = z.object({
+  configured: z.boolean(),
+  items: z.array(CommunitySkillHit),
+});
+export type CommunitySkillSearchResult = z.infer<typeof CommunitySkillSearchResult>;
 
 /** POST /skills/import/file: a Markdown file or a zip archive, base64-encoded. */
 export const SkillImportFileBody = z

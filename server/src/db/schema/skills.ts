@@ -33,6 +33,8 @@ export const skillVersions = pgTable(
       .references(() => skills.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     body: text('body').notNull(),
+    /** "What changed" in this version, as the author described it; metadata, never in a prompt. */
+    note: text('note'),
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),

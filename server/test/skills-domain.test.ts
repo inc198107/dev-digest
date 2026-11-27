@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { MAX_SKILL_NOTE_CHARS } from '@devdigest/shared';
 import {
+  acceptRate,
+  cleanVersionNote,
   decodeSkillText,
   draftBodyProblem,
   draftFromMarkdown,
@@ -11,11 +14,16 @@ import {
   isModelVisibleChange,
   normalizeSkillUrl,
   planSkillVersion,
+  pullFrequency,
+  ratio,
+  restoreNote,
   selectSkillCore,
   slugifySkillName,
   splitFrontmatter,
   stripHiddenCharacters,
   hiddenOnlyProblem,
+  toSkillStats,
+  toSkillStatsSummary,
   withoutHiddenCharacters,
 } from '../src/modules/skills/domain.js';
 
@@ -33,6 +41,69 @@ describe('skill versioning', () => {
 
   it('an unchanged value is not a change', () => {
     expect(isModelVisibleChange(SKILL, { body: '# Body', name: 'untested-branches' })).toBe(false);
+  });
+});
+
+describe('version notes', () => {
+  it('a note never decides a version bump', () => {
+    expect(planSkillVersion(SKILL, { note: 'Tightened wording' } as never)).toEqual({ bump: false, version: 2 });
+    expect(planSkillVersion(SKILL, { body: '# New', note: 'x' })).toEqual({ bump: true, version: 3 });
+  });
+
+  it('cleans a note: invisible characters out, whitespace collapsed, blank is no note', () => {
+    expect(cleanVersionNote('  Tightened\n  the   rubric\u200B ')).toBe('Tightened the rubric');
+    expect(cleanVersionNote('\u200B\u202E  ')).toBeNull();
+    expect(cleanVersionNote('')).toBeNull();
+    expect(cleanVersionNote(undefined)).toBeNull();
+    expect(cleanVersionNote(null)).toBeNull();
+    expect(cleanVersionNote('x'.repeat(MAX_SKILL_NOTE_CHARS + 50))).toHaveLength(MAX_SKILL_NOTE_CHARS);
+  });
+
+  it('a restore is noted with the restored version', () => {
+    expect(restoreNote(3)).toBe('Restored from v3');
+  });
+});
+
+describe('skill stats rates', () => {
+  it('ratio is null without a denominator and clamped to [0, 1]', () => {
+    expect(ratio(1, 4)).toBe(0.25);
+    expect(ratio(0, 3)).toBe(0);
+    expect(ratio(0, 0)).toBeNull();
+    expect(ratio(5, 0)).toBeNull();
+    expect(ratio(5, 4)).toBe(1);
+    expect(ratio(-1, 4)).toBe(0);
+    expect(ratio(1, Number.NaN)).toBeNull();
+  });
+
+  it('pull frequency is skill runs over all runs; null without runs', () => {
+    expect(pullFrequency(2, 3)).toBeCloseTo(2 / 3);
+    expect(pullFrequency(0, 5)).toBe(0);
+    expect(pullFrequency(0, 0)).toBeNull();
+  });
+
+  it('accept rate counts decided findings only; null when none was decided', () => {
+    expect(acceptRate(3, 1)).toBe(0.75);
+    expect(acceptRate(0, 2)).toBe(0);
+    expect(acceptRate(0, 0)).toBeNull();
+  });
+
+  it('maps counts to the summary and the full stats', () => {
+    const counts = { skillId: 's1', usedBy: 2, skillRuns: 1, findings: 5, accepted: 1, dismissed: 3 };
+    expect(toSkillStatsSummary(counts, 4)).toEqual({ skill_id: 's1', used_by: 2, pull_frequency: 0.25, accept_rate: 0.25 });
+    expect(toSkillStats(counts, 4, [{ category: 'bug', count: 5 }])).toEqual({
+      skill_id: 's1',
+      used_by: 2,
+      runs_30d: 4,
+      skill_runs_30d: 1,
+      pull_frequency: 0.25,
+      accept_rate: 0.25,
+      findings_30d: 5,
+      findings_by_category: [{ category: 'bug', count: 5 }],
+    });
+    expect(toSkillStatsSummary({ ...counts, skillRuns: 0, accepted: 0, dismissed: 0 }, 0)).toMatchObject({
+      pull_frequency: null,
+      accept_rate: null,
+    });
   });
 });
 

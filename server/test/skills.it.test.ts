@@ -8,10 +8,10 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed, TEST_QUALITY_REVIEWER } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
-import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockGitClient, MockGitHubClient, MockSecretsProvider } from '../src/adapters/mocks.js';
 import { DrizzleSkillsUnitOfWork, SkillsRepository } from '../src/modules/skills/repository.js';
 import { SkillsService } from '../src/modules/skills/service.js';
-import type { TextFetcher } from '../src/modules/skills/ports.js';
+import type { CommunitySkillSearch, TextFetcher } from '../src/modules/skills/ports.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -169,6 +169,89 @@ d('skills module (Postgres)', () => {
 
     const one = (await app.inject({ method: 'GET', url: `/skills/${skill.id}` })).json();
     expect(one).toMatchObject({ id: skill.id, version: 3, used_by: [] });
+    await app.close();
+  });
+
+  it('stores a note with the version a PUT creates and notes a restore', async () => {
+    const app = await makeApp();
+    const skill = (await app.inject({ method: 'POST', url: '/skills', payload: createBody('it-notes') })).json();
+
+    const edited = await app.inject({
+      method: 'PUT',
+      url: `/skills/${skill.id}`,
+      payload: { body: '# Rule v2', note: 'Covers early returns' },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json()).toMatchObject({ version: 2, body: '# Rule v2' });
+    expect(edited.json()).not.toHaveProperty('note');
+
+    const metaOnly = await app.inject({
+      method: 'PUT',
+      url: `/skills/${skill.id}`,
+      payload: { enabled: false, note: 'Paused for now' },
+    });
+    expect(metaOnly.json()).toMatchObject({ version: 2, enabled: false });
+    expect((await app.inject({ method: 'PUT', url: `/skills/${skill.id}`, payload: { note: 'only a note' } })).statusCode).toBe(422);
+    expect(
+      (await app.inject({ method: 'PUT', url: `/skills/${skill.id}`, payload: { body: 'x', note: 'n'.repeat(201) } })).statusCode,
+    ).toBe(422);
+
+    const restored = await app.inject({ method: 'POST', url: `/skills/${skill.id}/versions/1/restore` });
+    expect(restored.json()).toMatchObject({ version: 3, body: '# Rule\n- check it' });
+
+    const versions = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/versions` })).json();
+    expect(versions.map((v: { version: number; note: string | null }) => [v.version, v.note])).toEqual([
+      [3, 'Restored from v1'],
+      [2, 'Covers early returns'],
+      [1, null],
+    ]);
+    const [row] = await pg.handle.db.select().from(t.skills).where(eq(t.skills.id, skill.id));
+    expect(row).not.toHaveProperty('note');
+    await app.close();
+  });
+
+  it('community search without a GitHub token answers configured: false', async () => {
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({
+      config,
+      db: pg.handle.db,
+      overrides: { git: new MockGitClient(), secrets: new MockSecretsProvider() },
+    });
+    const res = await app.inject({ method: 'GET', url: '/skills/community?q=owasp' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ configured: false, items: [] });
+    expect((await app.inject({ method: 'GET', url: '/skills/community?q=a' })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'GET', url: '/skills/community' })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it('community search returns the port result through the response schema', async () => {
+    const queries: string[] = [];
+    const communitySkills: CommunitySkillSearch = {
+      search: async (q) => {
+        queries.push(q);
+        return {
+          configured: true,
+          items: [
+            {
+              name: 'owasp-review',
+              description: null,
+              repo: 'acme/skills',
+              path: 'owasp-review/SKILL.md',
+              url: 'https://github.com/acme/skills/blob/main/owasp-review/SKILL.md',
+              stars: 7,
+              language: 'Markdown',
+            },
+          ],
+        };
+      },
+    };
+    const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+    const app = await buildApp({ config, db: pg.handle.db, overrides: { git: new MockGitClient(), communitySkills } });
+    const res = await app.inject({ method: 'GET', url: '/skills/community?q=owasp%20%20review' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([expect.objectContaining({ name: 'owasp-review', stars: 7 })]);
+    expect(queries).toEqual(['owasp review']);
     await app.close();
   });
 

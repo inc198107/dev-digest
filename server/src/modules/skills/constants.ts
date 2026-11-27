@@ -47,3 +47,12 @@ export const MAX_URL_REDIRECTS = 3;
 
 /** Timeout of a URL import (milliseconds). */
 export const URL_FETCH_TIMEOUT_MS = 10_000;
+
+/** Days the Skills Lab stats look back (`runs_30d`, `findings_30d`), counted by the DB clock. */
+export const SKILL_STATS_WINDOW_DAYS = 30;
+
+/**
+ * `agent_runs.status` of the runs the stats count: finished reviews only. Failed and cancelled
+ * runs never reach the model's answer, and their traces carry no skill blocks.
+ */
+export const SKILL_STATS_RUN_STATUS = 'done';

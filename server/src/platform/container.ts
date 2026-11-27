@@ -27,7 +27,12 @@ import { ConfigError } from './errors.js';
 import { AgentsRepository, DrizzleAgentsUnitOfWork } from '../modules/agents/repository.js';
 import type { AgentsUnitOfWork } from '../modules/agents/ports.js';
 import { DrizzleSkillsUnitOfWork, SkillsRepository } from '../modules/skills/repository.js';
-import type { ArchiveReader, SkillsUnitOfWork, TextFetcher } from '../modules/skills/ports.js';
+import type {
+  ArchiveReader,
+  CommunitySkillSearch,
+  SkillsUnitOfWork,
+  TextFetcher,
+} from '../modules/skills/ports.js';
 import { SkillPromptBlocks } from '../modules/skills/service.js';
 import type { SkillsForAgent } from '../modules/skills/types.js';
 import { ConventionsRepository, DrizzleConventionsUnitOfWork } from '../modules/conventions/repository.js';
@@ -42,6 +47,7 @@ import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 import { FflateZipReader } from '../adapters/archive/zip.js';
 import { HttpsTextFetcher } from '../adapters/web/text-fetcher.js';
+import { GitHubSkillSearch } from '../adapters/github/skill-search.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -66,6 +72,8 @@ export interface ContainerOverrides {
   tokenizer?: Tokenizer;
   /** Downloader of the skill URL import — tests inject a fake (no network). */
   skillFetcher?: TextFetcher;
+  /** Community skill search on GitHub — tests inject a fake (no network). */
+  communitySkills?: CommunitySkillSearch;
 }
 
 export class Container {
@@ -97,6 +105,7 @@ export class Container {
   private _skillArchive?: ArchiveReader;
   private _skillFetcher?: TextFetcher;
   private _skillsForAgent?: SkillsForAgent;
+  private _communitySkills?: CommunitySkillSearch;
   private _reposRepo?: RepoRepository;
   private _conventionsRepo?: ConventionsRepository;
   private _conventionsUow?: ConventionsUnitOfWork;
@@ -149,6 +158,16 @@ export class Container {
   get skillFetcher(): TextFetcher {
     if (this.overrides.skillFetcher) return this.overrides.skillFetcher;
     return (this._skillFetcher ??= new HttpsTextFetcher());
+  }
+
+  /**
+   * Community skill search (GitHub code search for `SKILL.md`). The token is read from
+   * SecretsProvider on every search; without one the search answers `configured: false`.
+   * @returns The injected fake in tests, else the cached GitHub adapter.
+   */
+  get communitySkills(): CommunitySkillSearch {
+    if (this.overrides.communitySkills) return this.overrides.communitySkills;
+    return (this._communitySkills ??= new GitHubSkillSearch({ token: () => this.secrets.get('GITHUB_TOKEN') }));
   }
 
   /**

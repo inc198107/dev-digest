@@ -1,19 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
+  CommunitySkillQuery,
+  CommunitySkillSearchResult,
   Skill,
   SkillCreateBody,
   SkillImportFileBody,
   SkillImportPreview,
   SkillImportUrlBody,
   SkillListItem,
+  SkillStats,
   SkillUpdateBody,
 } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
-import { Ok, SkillList, SkillVersionList, SkillVersionParams } from './schemas.js';
-import { SkillsService } from './service.js';
+import { Ok, SkillList, SkillStatsList, SkillVersionList, SkillVersionParams } from './schemas.js';
+import { CommunitySkillsService, SkillStatsService, SkillsService } from './service.js';
 
 /** Request body cap of the file import: a 1 MiB file as base64 plus the JSON around it. */
 const IMPORT_FILE_BODY_LIMIT = 2 * 1024 * 1024;
@@ -29,7 +32,11 @@ const IMPORT_FILE_BODY_LIMIT = 2 * 1024 * 1024;
  *   POST   /skills/:id/versions/:version/restore  → restore a snapshot as a new version
  *   POST   /skills/import/file                    → preview a .md / .zip / .skill upload
  *   POST   /skills/import/url                     → preview a file fetched over https
+ *   GET    /skills/stats                          → card stats of every skill (last 30 days)
+ *   GET    /skills/:id/stats                      → one skill's stats (last 30 days)
+ *   GET    /skills/community?q=                   → SKILL.md files in public GitHub repos
  * The import routes only preview: the client saves with POST /skills after the user confirms.
+ * `/skills/stats` and `/skills/community` are static paths, so they win over `/skills/:id`.
  *
  * @param appBase Encapsulated Fastify instance for this module.
  * @returns Resolves when the routes are registered.
@@ -44,6 +51,8 @@ export default async function skillsRoutes(appBase: FastifyInstance): Promise<vo
     fetcher: container.skillFetcher,
     tokens: container.tokenizer,
   });
+  const stats = new SkillStatsService({ stats: container.skillsRepo });
+  const community = new CommunitySkillsService({ search: container.communitySkills });
 
   app.get('/skills', { schema: { response: { 200: SkillList } } }, async (req) => {
     const { workspaceId } = await getContext(container, req);
@@ -138,6 +147,34 @@ export default async function skillsRoutes(appBase: FastifyInstance): Promise<vo
     async (req) => {
       await getContext(container, req);
       return service.previewUrl(req.body.url);
+    },
+  );
+
+  app.get('/skills/stats', { schema: { response: { 200: SkillStatsList } } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    return stats.summary(workspaceId);
+  });
+
+  app.get(
+    '/skills/:id/stats',
+    { schema: { params: IdParams, response: { 200: SkillStats } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      const result = await stats.forSkill(workspaceId, req.params.id);
+      if (!result) throw new NotFoundError('Skill not found');
+      return result;
+    },
+  );
+
+  app.get(
+    '/skills/community',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: { querystring: CommunitySkillQuery, response: { 200: CommunitySkillSearchResult } },
+    },
+    async (req) => {
+      await getContext(container, req);
+      return community.search(req.query.q);
     },
   );
 }

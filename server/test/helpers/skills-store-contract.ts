@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ConflictError } from '../../src/platform/errors.js';
-import type { NewSkill, SkillsStore } from '../../src/modules/skills/ports.js';
+import type { NewSkill, SkillPatch, SkillsStore } from '../../src/modules/skills/ports.js';
 
 /**
  * Behaviour every SkillsStore must share, run against the in-memory fake (skills-service.test.ts)
@@ -101,6 +101,25 @@ export function skillsStoreContract(name: string, make: () => Promise<SkillsStor
       ]);
       expect(await store.getVersion(skill.id, 1)).toMatchObject({ skill_id: skill.id, body: 'v1 body' });
       expect(await store.getVersion(skill.id, 9)).toBeUndefined();
+    });
+
+    it('keeps a note on its snapshot only', async () => {
+      const { store, workspaceId } = await make();
+      const skill = await store.insert(workspaceId, input('contract-notes'), 1);
+      await store.snapshotVersion(skill.id, 1, 'v1 body');
+      await store.snapshotVersion(skill.id, 2, 'v2 body', 'Covers early returns');
+      await store.snapshotVersion(skill.id, 2, 'v2 again', 'ignored rewrite');
+      expect((await store.listVersions(skill.id)).map((v) => [v.version, v.note ?? null])).toEqual([
+        [2, 'Covers early returns'],
+        [1, null],
+      ]);
+      expect((await store.getVersion(skill.id, 2))?.note).toBe('Covers early returns');
+      /** A caller that leaks the note into the patch must not get it onto the skill. */
+      const leaked = { body: 'new', note: 'not a column' } as SkillPatch;
+      const updated = await store.update(workspaceId, skill.id, leaked, 2);
+      expect(updated).toMatchObject({ body: 'new', version: 2 });
+      expect(updated).not.toHaveProperty('note');
+      expect(await store.get(workspaceId, skill.id)).not.toHaveProperty('note');
     });
 
     it('lists the workspace skills by name', async () => {

@@ -51,7 +51,7 @@ export default async function skillsRoutes(appBase: FastifyInstance): Promise<vo
     fetcher: container.skillFetcher,
     tokens: container.tokenizer,
   });
-  const stats = new SkillStatsService({ stats: container.skillsRepo });
+  const stats = new SkillStatsService({ stats: container.skillsRepo, runs: container.skillRunUsage });
   const community = new CommunitySkillsService({ search: container.communitySkills });
 
   app.get('/skills', { schema: { response: { 200: SkillList } } }, async (req) => {

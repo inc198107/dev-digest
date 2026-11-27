@@ -30,6 +30,7 @@ import { DrizzleSkillsUnitOfWork, SkillsRepository } from '../modules/skills/rep
 import type {
   ArchiveReader,
   CommunitySkillSearch,
+  SkillRunUsageReader,
   SkillsUnitOfWork,
   TextFetcher,
 } from '../modules/skills/ports.js';
@@ -137,6 +138,20 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  /**
+   * The review runs' side of the Skills Lab stats: the reviews module owns runs, traces and
+   * findings, so the skills module reads them through this port over the review repository.
+   * @returns The skill run usage reader.
+   */
+  get skillRunUsage(): SkillRunUsageReader {
+    const reviews = this.reviewRepo;
+    return {
+      runUsage: (workspaceId, skillIds, windowDays) => reviews.skillRunUsage(workspaceId, skillIds, windowDays),
+      findingsByCategory: (workspaceId, skillId, windowDays) =>
+        reviews.skillFindingsByCategory(workspaceId, skillId, windowDays),
+    };
   }
 
   /** Skills persistence (Skills Lab CRUD, "used by", an agent's enabled skills). */

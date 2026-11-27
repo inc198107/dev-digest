@@ -13,6 +13,7 @@ import type {
   CommunitySkillSearch,
   NewSkill,
   SkillPatch,
+  SkillRunUsageReader,
   SkillStatsReader,
   SkillsStore,
   SkillsUnitOfWork,
@@ -390,39 +391,57 @@ describe('SkillsService', () => {
 });
 
 describe('SkillStatsService', () => {
+  /** Calls the fakes receive, in order. */
+  let calls: string[];
+  beforeEach(() => {
+    calls = [];
+  });
+
   /**
-   * @param runs Finished runs of the workspace in the window.
-   * @returns A reader over two fixed skills that records its calls.
+   * @returns A skills-side reader over two fixed skills: 'a' linked by 2 agents, 'b' by none.
    */
-  function fakeStats(runs: number): SkillStatsReader & { calls: string[] } {
-    const skills = [
-      { skillId: 'a', usedBy: 2, skillRuns: 2, findings: 5, accepted: 3, dismissed: 1 },
-      { skillId: 'b', usedBy: 0, skillRuns: 0, findings: 0, accepted: 0, dismissed: 0 },
+  function fakeLinks(): SkillStatsReader {
+    const links = [
+      { skillId: 'a', usedBy: 2 },
+      { skillId: 'b', usedBy: 0 },
     ];
     return {
-      calls: [],
-      async usage(workspaceId, skillId) {
-        this.calls.push(`usage:${workspaceId}:${skillId ?? '*'}`);
-        return { runs, skills: skills.filter((s) => skillId === undefined || s.skillId === skillId) };
+      async linkCounts(workspaceId, skillId) {
+        calls.push(`links:${workspaceId}:${skillId ?? '*'}`);
+        return links.filter((l) => skillId === undefined || l.skillId === skillId);
       },
-      async findingsByCategory(workspaceId, skillId) {
-        this.calls.push(`categories:${workspaceId}:${skillId}`);
+    };
+  }
+
+  /**
+   * @param runs Finished runs of the workspace in the window.
+   * @returns A review-runs reader where only skill 'a' was loaded by runs ('b' is absent).
+   */
+  function fakeRuns(runs: number): SkillRunUsageReader {
+    return {
+      async runUsage(workspaceId, skillIds, windowDays) {
+        calls.push(`runs:${workspaceId}:${skillIds.join(',')}:${windowDays}`);
+        const a = { skillId: 'a', skillRuns: 2, findings: 5, accepted: 3, dismissed: 1 };
+        return { runs, skills: skillIds.includes('a') ? [a] : [] };
+      },
+      async findingsByCategory(workspaceId, skillId, windowDays) {
+        calls.push(`categories:${workspaceId}:${skillId}:${windowDays}`);
         return skillId === 'a' ? [{ category: 'testing', count: 4 }, { category: 'bug', count: 1 }] : [];
       },
     };
   }
 
-  it('summarizes every skill from one read, with rates from the domain', async () => {
-    const reader = fakeStats(4);
-    expect(await new SkillStatsService({ stats: reader }).summary(WS)).toEqual([
+  it('summarizes every skill with one read per side, over the 30-day window', async () => {
+    const service = new SkillStatsService({ stats: fakeLinks(), runs: fakeRuns(4) });
+    expect(await service.summary(WS)).toEqual([
       { skill_id: 'a', used_by: 2, pull_frequency: 0.5, accept_rate: 0.75 },
       { skill_id: 'b', used_by: 0, pull_frequency: 0, accept_rate: null },
     ]);
-    expect(reader.calls).toEqual([`usage:${WS}:*`]);
+    expect(calls).toEqual([`links:${WS}:*`, `runs:${WS}:a,b:30`]);
   });
 
   it('returns the full stats of one skill', async () => {
-    expect(await new SkillStatsService({ stats: fakeStats(4) }).forSkill(WS, 'a')).toEqual({
+    expect(await new SkillStatsService({ stats: fakeLinks(), runs: fakeRuns(4) }).forSkill(WS, 'a')).toEqual({
       skill_id: 'a',
       used_by: 2,
       runs_30d: 4,
@@ -437,10 +456,12 @@ describe('SkillStatsService', () => {
     });
   });
 
-  it('rates are null without runs; an unknown skill is undefined', async () => {
-    const service = new SkillStatsService({ stats: fakeStats(0) });
+  it('rates are null without runs; an unknown skill is undefined without reading the runs', async () => {
+    const service = new SkillStatsService({ stats: fakeLinks(), runs: fakeRuns(0) });
     expect(await service.forSkill(WS, 'b')).toMatchObject({ runs_30d: 0, pull_frequency: null, accept_rate: null });
+    calls = [];
     expect(await service.forSkill(WS, 'missing')).toBeUndefined();
+    expect(calls).toEqual([`links:${WS}:missing`]);
   });
 });
 

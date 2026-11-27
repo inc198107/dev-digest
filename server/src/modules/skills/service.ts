@@ -18,6 +18,7 @@ import {
   MAX_ARCHIVE_ENTRIES,
   MAX_ARCHIVE_UNPACKED_BYTES,
   MAX_SKILL_CORE_BYTES,
+  SKILL_STATS_WINDOW_DAYS,
 } from './constants.js';
 import {
   baseName,
@@ -35,6 +36,7 @@ import {
   restoreNote,
   selectSkillCore,
   type SkillDraft,
+  mergeSkillUsage,
   toSkillStats,
   toSkillStatsSummary,
   withoutHiddenCharacters,
@@ -44,6 +46,7 @@ import type {
   ArchiveReader,
   CommunitySkillSearch,
   SkillPatch,
+  SkillRunUsageReader,
   SkillStatsReader,
   SkillsStore,
   SkillsUnitOfWork,
@@ -371,9 +374,10 @@ export class SkillPromptBlocks implements SkillsForAgent {
   }
 }
 
-/** What the stats use cases need: the usage reader. */
+/** What the stats use cases need: the skills side (links) and the review runs' side. */
 export interface SkillStatsServiceDeps {
   stats: SkillStatsReader;
+  runs: SkillRunUsageReader;
 }
 
 /**
@@ -391,8 +395,13 @@ export class SkillStatsService {
    * @returns The card numbers of every skill of the workspace, by skill name (one read).
    */
   async summary(workspaceId: string): Promise<SkillStatsSummary[]> {
-    const usage = await this.deps.stats.usage(workspaceId);
-    return usage.skills.map((counts) => toSkillStatsSummary(counts, usage.runs));
+    const links = await this.deps.stats.linkCounts(workspaceId);
+    const usage = await this.deps.runs.runUsage(
+      workspaceId,
+      links.map((link) => link.skillId),
+      SKILL_STATS_WINDOW_DAYS,
+    );
+    return mergeSkillUsage(links, usage.skills).map((counts) => toSkillStatsSummary(counts, usage.runs));
   }
 
   /**
@@ -401,12 +410,14 @@ export class SkillStatsService {
    * @returns The stats of the skill, or undefined when it is not in this workspace (route → 404).
    */
   async forSkill(workspaceId: string, id: string): Promise<SkillStats | undefined> {
+    const [link] = await this.deps.stats.linkCounts(workspaceId, id);
+    if (!link) return undefined;
     const [usage, categories] = await Promise.all([
-      this.deps.stats.usage(workspaceId, id),
-      this.deps.stats.findingsByCategory(workspaceId, id),
+      this.deps.runs.runUsage(workspaceId, [id], SKILL_STATS_WINDOW_DAYS),
+      this.deps.runs.findingsByCategory(workspaceId, id, SKILL_STATS_WINDOW_DAYS),
     ]);
-    const counts = usage.skills[0];
-    return counts ? toSkillStats(counts, usage.runs, categories) : undefined;
+    const [counts] = mergeSkillUsage([link], usage.skills);
+    return toSkillStats(counts!, usage.runs, categories);
   }
 }
 

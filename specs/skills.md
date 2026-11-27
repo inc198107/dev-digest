@@ -146,7 +146,8 @@ Plan: `L02-skills-lab-finish-plan.md` (outside the repo). Evals stay out of scop
   description or body. Versions titles a row with its note and offers **Diff** against the
   previous version (client LCS line diff, `VersionsTab/line-diff.ts`).
 - **Stats.** `GET /skills/:id/stats` (`SkillStats`) and `GET /skills/stats` (`SkillStatsSummary[]`, one
-  SQL statement for the cards). Window: finished (`done`) review runs of the workspace in the last
+  read per side for the cards: the skills module reads the skills and their links, the reviews
+  module reads the runs, traces and findings behind the `SkillRunUsageReader` port). Window: finished (`done`) review runs of the workspace in the last
   30 days, by the DB clock. A run counts for a skill when its trace's `prompt_assembly.skill_blocks`
   contains the skill id. `pull_frequency = skill runs / runs`; `accept_rate = accepted / (accepted +
   dismissed)` over the findings of those runs; both null when the denominator is 0. A run's

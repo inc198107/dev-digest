@@ -8,6 +8,8 @@ import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import { MockEmbedder, MockGitClient, MockLLMProvider } from '../src/adapters/mocks.js';
 import { SkillsRepository } from '../src/modules/skills/repository.js';
+import { SkillStatsService } from '../src/modules/skills/service.js';
+import { ReviewRepository } from '../src/modules/reviews/repository.js';
 import * as t from '../src/db/schema.js';
 
 const hasDocker = await dockerAvailable();
@@ -294,14 +296,30 @@ d('skill stats (Postgres)', () => {
   });
 
   it('a workspace without runs has null rates for every skill', async () => {
-    const usage = await new SkillsRepository(pg.handle.db).usage(otherWorkspaceId);
-    expect(usage.runs).toBe(1);
-    const empty = await pg.handle.db.insert(t.workspaces).values({ name: 'stats-empty' }).returning();
-    const repo = new SkillsRepository(pg.handle.db);
-    await repo.insert(empty[0]!.id, { name: 'stats-lonely', description: 'Flag.', type: 'rubric', body: '# b', source: 'manual' }, 1);
-    expect(await repo.usage(empty[0]!.id)).toEqual({
-      runs: 0,
-      skills: [expect.objectContaining({ usedBy: 0, skillRuns: 0, findings: 0 })],
+    const db = pg.handle.db;
+    const [empty] = await db.insert(t.workspaces).values({ name: 'stats-empty' }).returning();
+    const skills = new SkillsRepository(db);
+    const lonely = await skills.insert(
+      empty!.id,
+      { name: 'stats-lonely', description: 'Flag.', type: 'rubric', body: '# b', source: 'manual' },
+      1,
+    );
+    const reviews = new ReviewRepository(db);
+    const service = new SkillStatsService({
+      stats: skills,
+      runs: {
+        runUsage: (ws, ids, days) => reviews.skillRunUsage(ws, ids, days),
+        findingsByCategory: (ws, id, days) => reviews.skillFindingsByCategory(ws, id, days),
+      },
+    });
+    expect(await service.summary(empty!.id)).toEqual([
+      { skill_id: lonely.id, used_by: 0, pull_frequency: null, accept_rate: null },
+    ]);
+    expect(await service.forSkill(empty!.id, lonely.id)).toMatchObject({
+      runs_30d: 0,
+      skill_runs_30d: 0,
+      findings_30d: 0,
+      findings_by_category: [],
     });
   });
 });

@@ -1,7 +1,6 @@
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   Skill,
-  SkillCategoryCount,
   SkillListItem,
   SkillSource,
   SkillType,
@@ -12,7 +11,6 @@ import type { Db, DbExecutor } from '../../db/client.js';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
 import * as t from '../../db/schema.js';
 import { ConflictError } from '../../platform/errors.js';
-import { SKILL_STATS_RUN_STATUS, SKILL_STATS_WINDOW_DAYS } from './constants.js';
 import type {
   AgentSkillsReader,
   NewSkill,
@@ -20,16 +18,16 @@ import type {
   SkillStatsReader,
   SkillsStore,
   SkillsUnitOfWork,
-  SkillUsageWindow,
 } from './ports.js';
+import type { SkillLinkCount } from './domain.js';
 
 /**
  * Skills persistence (infrastructure ring). Owns `skills` and `skill_versions` and reads the
  * skill side of `agent_skills` ("used by", the skills of an agent's prompt). Implements the
  * SkillsStore, AgentSkillsReader and SkillStatsReader ports: every method returns contract
  * shapes, so Drizzle rows never leave this file. Workspace-scoped wherever the caller passes a
- * workspace. The stats are a read-only view over the review tables (`agent_runs`,
- * `run_traces`, `reviews`, `findings`): nothing here writes them.
+ * workspace. The stats read only the skills side here (link counts); the review runs' side is
+ * the reviews module's, read through `SkillRunUsageReader`.
  */
 
 /** Name of the unique index on `skills (workspace_id, name)`. */
@@ -68,42 +66,8 @@ function toSkillVersion(row: SkillVersionRow): SkillVersion {
   };
 }
 
-/**
- * The finished runs of a workspace inside the stats window, each with the skill blocks its
- * trace recorded (`prompt_assembly.skill_blocks`; null for a run without a trace or with an
- * older trace). The window is measured with the database clock.
- * @param workspaceId Tenant scope.
- * @returns A SELECT of `id`, `blocks` to use as a CTE body.
- */
-function windowRunsSql(workspaceId: string): SQL {
-  return sql`
-    SELECT ar.id, rt.trace #> '{prompt_assembly,skill_blocks}' AS blocks
-    FROM agent_runs ar
-    LEFT JOIN run_traces rt ON rt.run_id = ar.id
-    WHERE ar.workspace_id = ${workspaceId}
-      AND ar.status = ${SKILL_STATS_RUN_STATUS}
-      AND ar.ran_at >= now() - make_interval(days => ${SKILL_STATS_WINDOW_DAYS}::int)`;
-}
-
-/**
- * jsonb value that a skill-blocks array contains (`@>`) when it holds the skill's block.
- * @param skillId SQL expression yielding the skill id as text.
- * @returns `[{"id": <skill id>}]` as jsonb.
- */
-function skillBlockPattern(skillId: SQL): SQL {
-  return sql`jsonb_build_array(jsonb_build_object('id', ${skillId}))`;
-}
-
-/** One row of the usage query (postgres-js returns the `::int` casts as numbers). */
-type UsageRow = {
-  skill_id: string;
-  runs: number;
-  skill_runs: number;
-  findings: number;
-  accepted: number;
-  dismissed: number;
-  used_by: number;
-};
+/** One row of the link-count query (postgres-js returns the `::int` cast as a number). */
+type LinkCountRow = { skill_id: string; used_by: number };
 
 /**
  * Recognize Postgres' unique violation on the skill name. postgres-js throws its error as is;
@@ -329,90 +293,28 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader, SkillSt
   }
 
   /**
-   * Usage of the workspace's skills over the stats window in one statement. The finished runs
-   * of the window are read once (each trace detoasted once); a run counts for a skill when its
-   * skill blocks contain the skill id (jsonb containment); findings are those of the reviews
-   * the run produced (`reviews.run_id`).
+   * The skills side of the Skills Lab stats: the workspace's skills with how many of its agents
+   * link each one now. The review runs' side is read through `SkillRunUsageReader`.
    * @param workspaceId Tenant scope.
    * @param skillId Only this skill; omitted, every skill of the workspace.
-   * @returns The workspace's run count and the counts per skill, by skill name.
+   * @returns The skills with their link counts, by skill name; empty when the skill is not in
+   *   this workspace.
    */
-  async usage(workspaceId: string, skillId?: string): Promise<SkillUsageWindow> {
+  async linkCounts(workspaceId: string, skillId?: string): Promise<SkillLinkCount[]> {
     const onlySkill = skillId === undefined ? sql`` : sql`AND s.id = ${skillId}`;
-    const rows = await this.db.execute<UsageRow>(sql`
-      WITH window_runs AS MATERIALIZED (${windowRunsSql(workspaceId)}),
-      ws_skills AS (
-        SELECT s.id, s.name FROM skills s WHERE s.workspace_id = ${workspaceId} ${onlySkill}
-      ),
-      skill_runs AS (
-        SELECT s.id AS skill_id, wr.id AS run_id
-        FROM ws_skills s
-        JOIN window_runs wr ON wr.blocks @> ${skillBlockPattern(sql`s.id::text`)}
-      ),
-      run_counts AS (
-        SELECT skill_id, count(*)::int AS n FROM skill_runs GROUP BY skill_id
-      ),
-      finding_counts AS (
-        SELECT sr.skill_id,
-               count(f.id)::int AS findings,
-               count(f.accepted_at)::int AS accepted,
-               count(f.dismissed_at)::int AS dismissed
-        FROM skill_runs sr
-        JOIN reviews rv ON rv.run_id = sr.run_id AND rv.workspace_id = ${workspaceId}
-        JOIN findings f ON f.review_id = rv.id
-        GROUP BY sr.skill_id
-      ),
-      links AS (
+    const rows = await this.db.execute<LinkCountRow>(sql`
+      SELECT s.id AS skill_id, coalesce(l.n, 0) AS used_by
+      FROM skills s
+      LEFT JOIN (
         SELECT ak.skill_id, count(*)::int AS n
         FROM agent_skills ak
         JOIN agents a ON a.id = ak.agent_id
         WHERE a.workspace_id = ${workspaceId}
         GROUP BY ak.skill_id
-      )
-      SELECT s.id AS skill_id,
-             (SELECT count(*)::int FROM window_runs) AS runs,
-             coalesce(rc.n, 0) AS skill_runs,
-             coalesce(fc.findings, 0) AS findings,
-             coalesce(fc.accepted, 0) AS accepted,
-             coalesce(fc.dismissed, 0) AS dismissed,
-             coalesce(l.n, 0) AS used_by
-      FROM ws_skills s
-      LEFT JOIN run_counts rc ON rc.skill_id = s.id
-      LEFT JOIN finding_counts fc ON fc.skill_id = s.id
-      LEFT JOIN links l ON l.skill_id = s.id
+      ) l ON l.skill_id = s.id
+      WHERE s.workspace_id = ${workspaceId} ${onlySkill}
       ORDER BY s.name`);
-    const list = [...rows];
-    return {
-      runs: list[0]?.runs ?? 0,
-      skills: list.map((r) => ({
-        skillId: r.skill_id,
-        usedBy: r.used_by,
-        skillRuns: r.skill_runs,
-        findings: r.findings,
-        accepted: r.accepted,
-        dismissed: r.dismissed,
-      })),
-    };
-  }
-
-  /**
-   * @param workspaceId Tenant scope.
-   * @param skillId Skill id.
-   * @returns Findings of the skill's runs in the window per category, most frequent first
-   *   (ties by category name); [] when the skill is not in this workspace.
-   */
-  async findingsByCategory(workspaceId: string, skillId: string): Promise<SkillCategoryCount[]> {
-    const rows = await this.db.execute<SkillCategoryCount>(sql`
-      WITH window_runs AS MATERIALIZED (${windowRunsSql(workspaceId)})
-      SELECT f.category, count(*)::int AS count
-      FROM window_runs wr
-      JOIN skills s ON s.id = ${skillId} AND s.workspace_id = ${workspaceId}
-      JOIN reviews rv ON rv.run_id = wr.id AND rv.workspace_id = ${workspaceId}
-      JOIN findings f ON f.review_id = rv.id
-      WHERE wr.blocks @> ${skillBlockPattern(sql`s.id::text`)}
-      GROUP BY f.category
-      ORDER BY count DESC, f.category`);
-    return [...rows].map((r) => ({ category: r.category, count: r.count }));
+    return [...rows].map((r) => ({ skillId: r.skill_id, usedBy: r.used_by }));
   }
 
   /**

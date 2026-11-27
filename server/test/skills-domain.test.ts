@@ -12,6 +12,7 @@ import {
   formatSkillBlock,
   ignoredReason,
   isModelVisibleChange,
+  mergeSkillUsage,
   normalizeSkillUrl,
   planSkillVersion,
   pullFrequency,
@@ -325,5 +326,22 @@ describe('skill URLs', () => {
 
   it('takes the decoded last path segment as the file name', () => {
     expect(fileNameFromUrl('https://example.com/a/my%20skill.md?x=1')).toBe('my skill.md');
+  });
+});
+
+describe('mergeSkillUsage', () => {
+  it('keeps the links order and gives a skill no run loaded zero counts', () => {
+    expect(
+      mergeSkillUsage(
+        [
+          { skillId: 'b', usedBy: 1 },
+          { skillId: 'a', usedBy: 0 },
+        ],
+        [{ skillId: 'a', skillRuns: 3, findings: 4, accepted: 2, dismissed: 1 }],
+      ),
+    ).toEqual([
+      { skillId: 'b', usedBy: 1, skillRuns: 0, findings: 0, accepted: 0, dismissed: 0 },
+      { skillId: 'a', usedBy: 0, skillRuns: 3, findings: 4, accepted: 2, dismissed: 1 },
+    ]);
   });
 });

@@ -92,7 +92,49 @@ export function restoreNote(version: number): string {
   return `Restored from v${version}`;
 }
 
-/** Raw counts of one skill over the stats window, as the stats reader returns them. */
+/** A skill of the workspace with the number of agents that link it now. */
+export interface SkillLinkCount {
+  skillId: string;
+  /** Agents that link the skill now. */
+  usedBy: number;
+}
+
+/** What the review runs of the stats window recorded for one skill. */
+export interface SkillRunCounts {
+  skillId: string;
+  /** Finished runs in the window whose prompt loaded the skill. */
+  skillRuns: number;
+  /** Findings of those runs. */
+  findings: number;
+  /** Of those findings, accepted ones. */
+  accepted: number;
+  /** Of those findings, dismissed ones. */
+  dismissed: number;
+}
+
+/**
+ * Join the skills side (who links each skill) with what the review runs recorded. A skill no run
+ * loaded gets zero counts.
+ * @param links The skills to report, in the order to report them.
+ * @param runs Counts per skill from the review runs; skills missing here count as unused.
+ * @returns One entry per link, in the links' order.
+ */
+export function mergeSkillUsage(links: SkillLinkCount[], runs: SkillRunCounts[]): SkillUsageCounts[] {
+  const byId = new Map(runs.map((r) => [r.skillId, r]));
+  return links.map((link) => {
+    const counts = byId.get(link.skillId);
+    return {
+      skillId: link.skillId,
+      usedBy: link.usedBy,
+      skillRuns: counts?.skillRuns ?? 0,
+      findings: counts?.findings ?? 0,
+      accepted: counts?.accepted ?? 0,
+      dismissed: counts?.dismissed ?? 0,
+    };
+  });
+}
+
+/** Raw counts of one skill over the stats window: its links plus what the runs recorded. */
 export interface SkillUsageCounts {
   skillId: string;
   /** Agents that link the skill now. */

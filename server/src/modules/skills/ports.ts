@@ -7,7 +7,7 @@ import type {
   SkillUpdateBody,
   SkillVersion,
 } from '@devdigest/shared';
-import type { SkillUsageCounts } from './domain.js';
+import type { SkillLinkCount, SkillRunCounts } from './domain.js';
 
 /**
  * Ports of the skills use cases. Declared here, in the core's vocabulary (contract shapes, no
@@ -118,34 +118,47 @@ export interface AgentSkillsReader {
   enabledForAgent(workspaceId: string, agentId: string): Promise<Skill[]>;
 }
 
-/** Usage counts of a workspace's skills over the stats window. */
-export interface SkillUsageWindow {
+/** Reads the skills side of the Skills Lab stats: which skills exist and who links them. */
+export interface SkillStatsReader {
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillId Only this skill; omitted, every skill of the workspace.
+   * @returns The workspace's skills (or the one skill) with their current link counts, by skill
+   *   name; empty when the skill is not in this workspace.
+   */
+  linkCounts(workspaceId: string, skillId?: string): Promise<SkillLinkCount[]>;
+}
+
+/** The finished review runs of the stats window and what they recorded per skill. */
+export interface SkillRunUsage {
   /** Finished review runs of the workspace in the window. */
   runs: number;
-  /** One entry per requested skill of the workspace, by skill name. */
-  skills: SkillUsageCounts[];
+  /** Counts of the requested skills that some run loaded; a skill no run loaded may be absent. */
+  skills: SkillRunCounts[];
 }
 
 /**
- * Reads how skills were used by review runs (Skills Lab stats). The window is the last
- * `SKILL_STATS_WINDOW_DAYS` days by the database clock; only finished runs count, and a run
- * counts for a skill when its trace recorded the skill's prompt block.
+ * Reads how review runs used skills. The runs, their traces and their findings belong to the
+ * reviews module, which implements this port (wired in the composition root). Only finished runs
+ * count; a run counts for a skill when its trace recorded the skill's prompt block. The window is
+ * measured with the database clock.
  */
-export interface SkillStatsReader {
+export interface SkillRunUsageReader {
   /**
    * One read for any number of skills (no query per skill).
    * @param workspaceId Tenant scope.
-   * @param skillId Only this skill; omitted, every skill of the workspace.
-   * @returns The workspace's run count and the counts per skill; `skills` is empty when the
-   *   skill is not in this workspace.
+   * @param skillIds Skills to count.
+   * @param windowDays Days to look back.
+   * @returns The workspace's run count and the counts of the requested skills.
    */
-  usage(workspaceId: string, skillId?: string): Promise<SkillUsageWindow>;
+  runUsage(workspaceId: string, skillIds: string[], windowDays: number): Promise<SkillRunUsage>;
   /**
    * @param workspaceId Tenant scope.
    * @param skillId Skill id.
+   * @param windowDays Days to look back.
    * @returns Findings of the skill's runs in the window per category, most frequent first.
    */
-  findingsByCategory(workspaceId: string, skillId: string): Promise<SkillCategoryCount[]>;
+  findingsByCategory(workspaceId: string, skillId: string, windowDays: number): Promise<SkillCategoryCount[]>;
 }
 
 /** Finds community skills (`SKILL.md` files) in public GitHub repositories. */

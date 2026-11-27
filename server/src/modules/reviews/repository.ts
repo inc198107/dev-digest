@@ -21,6 +21,8 @@ export type ReviewRow = typeof t.reviews.$inferSelect;
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
+import * as skillUsageRepo from './repository/skill-usage.repo.js';
+import type { SkillFindingCategoryRow, SkillRunUsageResult } from './repository/skill-usage.repo.js';
 
 export class ReviewRepository {
   constructor(private db: Db) {}
@@ -188,5 +190,26 @@ export class ReviewRepository {
 
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
+  }
+
+  /**
+   * How the workspace's finished runs of the window used the given skills (Skills Lab stats).
+   * @param workspaceId Tenant scope.
+   * @param skillIds Skills to count.
+   * @param windowDays Days to look back.
+   * @returns The run count and one entry per requested skill.
+   */
+  skillRunUsage(workspaceId: string, skillIds: string[], windowDays: number): Promise<SkillRunUsageResult> {
+    return skillUsageRepo.skillRunUsage(this.db, workspaceId, skillIds, windowDays);
+  }
+
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillId Skill id.
+   * @param windowDays Days to look back.
+   * @returns Findings of the skill's runs in the window per category, most frequent first.
+   */
+  skillFindingsByCategory(workspaceId: string, skillId: string, windowDays: number): Promise<SkillFindingCategoryRow[]> {
+    return skillUsageRepo.skillFindingsByCategory(this.db, workspaceId, skillId, windowDays);
   }
 }

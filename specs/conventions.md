@@ -37,8 +37,9 @@ state and the `ListChecks` icon are reused.
   - `contracts/skills.ts`: `SkillCreateSource` gains `'extracted'`; `SkillCreateBody` gains
     optional `evidence_files` (≤ 50 paths); `SkillUpdateBody` omits it.
   - `ConventionCandidate` (`knowledge.ts`) is unchanged.
-- DB: `conventions.created_at timestamptz not null default now()` (new migration via
-  `pnpm db:generate`); "last scan" = the newest `created_at` of the repo.
+- DB: `conventions.created_at timestamptz not null default now()` (migration `0012`); "last
+  scan" = the newest `created_at` of the repo. Index `(repo_id, workspace_id)` (migration
+  `0013`; repo_id leads so the repos ON DELETE CASCADE can use it).
 - Routes (new module `conventions`):
 
   | Route | What it does |
@@ -74,7 +75,9 @@ state and the `ListChecks` icon are reused.
 - **Depends on real ranks.** The sample is repo-intel's PageRank order. On Windows the import
   graph used to come back empty (dependency-cruiser read absolute `D:\…` paths as globs), every
   file got the same rank and the sample was simply the first 40 paths alphabetically
-  (`client/src/app/agents/**`); `adapters/depgraph` now cruises from `baseDir`.
+  (`client/src/app/agents/**`); `adapters/depgraph` now passes walkClone's files as plain paths from `baseDir`. Files whose path is
+  a glob (Next.js `[id]` folders) are left out and get edges only through imports (dev-digest:
+  380 edges instead of 514).
 - **No output cap.** The model calls send no `maxTokens`: a reasoning model counts its
   reasoning in it, and a 4 000 cap made `deepseek-v4-flash` answer with empty content.
 - **Synchronous by decision.** The scan is two model calls (~10–90 s with a reasoning model) inside the request,

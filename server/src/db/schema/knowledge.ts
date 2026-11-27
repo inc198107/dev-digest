@@ -47,6 +47,9 @@ export const conventions = pgTable(
      */
     createdAt: now(),
   },
-  /** Every read and write of the extractor is scoped to one repo of one workspace. */
-  (t) => ({ wsRepoIdx: index('conventions_ws_repo_idx').on(t.workspaceId, t.repoId) }),
+  /**
+   * Every read and write of the extractor is scoped to one repo of one workspace; repo_id leads
+   * so the index also serves the ON DELETE CASCADE lookup from repos.
+   */
+  (t) => ({ repoWsIdx: index('conventions_repo_ws_idx').on(t.repoId, t.workspaceId) }),
 );

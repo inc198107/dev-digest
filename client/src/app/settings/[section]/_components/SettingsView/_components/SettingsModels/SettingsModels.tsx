@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { FormField, SearchableSelect, Icon } from "@devdigest/ui";
 import { useSettings, useUpdateSettings } from "../../../../../../../lib/hooks";
 import { useProviderModels } from "../../../../../../../lib/hooks/agents";
-import { toModelOptions } from "../../../../../../../lib/model-label";
+import { toModelOptions, withCurrentModel } from "../../../../../../../lib/model-label";
 import { FEATURE_MODELS } from "../../../../../../../lib/feature-models";
 import type { FeatureModelChoice, FeatureModelId } from "../../../../../../../lib/types";
 import { SectionTitle } from "../SectionTitle";
@@ -39,11 +39,7 @@ export function SettingsModels() {
       {FEATURE_MODELS.map((f) => {
         const current = chosen[f.id]?.model ?? f.defaultModel;
         const isDefault = !chosen[f.id];
-        // Ensure the current value is selectable even if it isn't in the live
-        // OpenRouter list (e.g. an OpenAI registry default, or an empty list).
-        const options = baseOptions.some((o) => (typeof o === "string" ? o : o.value) === current)
-          ? baseOptions
-          : [current, ...baseOptions];
+        const options = withCurrentModel(baseOptions, current);
         return (
           <div key={f.id} style={s.row}>
             <FormField
@@ -60,6 +56,7 @@ export function SettingsModels() {
                 onChange={(m) => setModel(f.id, m)}
                 options={options}
                 placeholder={t("models.search")}
+                ariaLabel={f.label}
               />
             </FormField>
           </div>

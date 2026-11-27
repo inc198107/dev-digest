@@ -82,7 +82,7 @@ export function ImportPreview({
 
       <div style={s.columns}>
         <div>
-          <SkillFields value={value} onChange={onChange} bodyRows={14} />
+          <SkillFields value={value} onChange={onChange} bodyRows={14} unsaved />
         </div>
         <div>
           <SkillBlockPreview skill={value} />

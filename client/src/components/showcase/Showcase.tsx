@@ -33,6 +33,7 @@ import {
   FormField,
   TextInput,
   SelectInput,
+  SearchableSelect,
   Textarea,
   Checkbox,
   Sparkline,
@@ -177,6 +178,11 @@ export function Gallery() {
             <SelectInput value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} />
           </FormField>
         </div>
+        <div style={s.w220}>
+          <FormField label="Model (searchable)">
+            <SearchableSelect value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} ariaLabel="Model (searchable)" />
+          </FormField>
+        </div>
         <div style={s.w280}>
           <FormField label="Notes">
             <Textarea value={text} onChange={setText} placeholder="Free text…" rows={3} />
@@ -229,6 +235,14 @@ export function Gallery() {
           segments={[
             { label: "openai", value: 4.2, color: "var(--accent)" },
             { label: "anthropic", value: 2.1, color: "var(--ok)" },
+          ]}
+        />
+        <Donut
+          size={110}
+          formatValue={String}
+          segments={[
+            { label: "security", value: 48, color: "var(--crit)" },
+            { label: "bug", value: 22, color: "var(--warn)" },
           ]}
         />
         <div style={s.w320}>

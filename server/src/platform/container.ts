@@ -5,6 +5,7 @@ import type {
   GitClient,
   CodeIndex,
   Embedder,
+  FeatureModelId,
   LLMProvider,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
@@ -26,16 +27,28 @@ import { ConfigError } from './errors.js';
 import { AgentsRepository, DrizzleAgentsUnitOfWork } from '../modules/agents/repository.js';
 import type { AgentsUnitOfWork } from '../modules/agents/ports.js';
 import { DrizzleSkillsUnitOfWork, SkillsRepository } from '../modules/skills/repository.js';
-import type { ArchiveReader, SkillsUnitOfWork, TextFetcher } from '../modules/skills/ports.js';
+import type {
+  ArchiveReader,
+  CommunitySkillSearch,
+  SkillRunUsageReader,
+  SkillsUnitOfWork,
+  TextFetcher,
+} from '../modules/skills/ports.js';
 import { SkillPromptBlocks } from '../modules/skills/service.js';
 import type { SkillsForAgent } from '../modules/skills/types.js';
+import { ConventionsRepository, DrizzleConventionsUnitOfWork } from '../modules/conventions/repository.js';
+import type { ConventionsUnitOfWork, RepoSources } from '../modules/conventions/ports.js';
+import { RepoRepository } from '../modules/repos/repository.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { EXCLUDED_DIRS } from '../modules/repo-intel/constants.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 import { FflateZipReader } from '../adapters/archive/zip.js';
 import { HttpsTextFetcher } from '../adapters/web/text-fetcher.js';
+import { GitHubSkillSearch } from '../adapters/github/skill-search.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -60,6 +73,8 @@ export interface ContainerOverrides {
   tokenizer?: Tokenizer;
   /** Downloader of the skill URL import — tests inject a fake (no network). */
   skillFetcher?: TextFetcher;
+  /** Community skill search on GitHub — tests inject a fake (no network). */
+  communitySkills?: CommunitySkillSearch;
 }
 
 export class Container {
@@ -91,6 +106,11 @@ export class Container {
   private _skillArchive?: ArchiveReader;
   private _skillFetcher?: TextFetcher;
   private _skillsForAgent?: SkillsForAgent;
+  private _communitySkills?: CommunitySkillSearch;
+  private _reposRepo?: RepoRepository;
+  private _conventionsRepo?: ConventionsRepository;
+  private _conventionsUow?: ConventionsUnitOfWork;
+  private _conventionSources?: RepoSources;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -120,6 +140,20 @@ export class Container {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
 
+  /**
+   * The review runs' side of the Skills Lab stats: the reviews module owns runs, traces and
+   * findings, so the skills module reads them through this port over the review repository.
+   * @returns The skill run usage reader.
+   */
+  get skillRunUsage(): SkillRunUsageReader {
+    const reviews = this.reviewRepo;
+    return {
+      runUsage: (workspaceId, skillIds, windowDays) => reviews.skillRunUsage(workspaceId, skillIds, windowDays),
+      findingsByCategory: (workspaceId, skillId, windowDays) =>
+        reviews.skillFindingsByCategory(workspaceId, skillId, windowDays),
+    };
+  }
+
   /** Skills persistence (Skills Lab CRUD, "used by", an agent's enabled skills). */
   get skillsRepo(): SkillsRepository {
     return (this._skillsRepo ??= new SkillsRepository(this.db));
@@ -142,11 +176,52 @@ export class Container {
   }
 
   /**
+   * Community skill search (GitHub code search for `SKILL.md`). The token is read from
+   * SecretsProvider on every search; without one the search answers `configured: false`.
+   * @returns The injected fake in tests, else the cached GitHub adapter.
+   */
+  get communitySkills(): CommunitySkillSearch {
+    if (this.overrides.communitySkills) return this.overrides.communitySkills;
+    return (this._communitySkills ??= new GitHubSkillSearch({ token: () => this.secrets.get('GITHUB_TOKEN') }));
+  }
+
+  /**
    * Skills facade for the reviews module: the enabled linked skills of an agent as prompt
    * blocks with token counts.
    */
   get skillsForAgent(): SkillsForAgent {
     return (this._skillsForAgent ??= new SkillPromptBlocks({ skills: this.skillsRepo, tokens: this.tokenizer }));
+  }
+
+  /** Repos persistence, read by other modules' ports (e.g. the conventions repo reader). */
+  get reposRepo(): RepoRepository {
+    return (this._reposRepo ??= new RepoRepository(this.db));
+  }
+
+  /** Conventions persistence (Conventions Extractor list, accept, reword, reject). */
+  get conventionsRepo(): ConventionsRepository {
+    return (this._conventionsRepo ??= new ConventionsRepository(this.db));
+  }
+
+  /** Transactions for the conventions scan (replace the pending conventions of a repo). */
+  get conventionsUow(): ConventionsUnitOfWork {
+    return (this._conventionsUow ??= new DrizzleConventionsUnitOfWork(this.db));
+  }
+
+  /**
+   * What a conventions scan reads: the repo (workspace-scoped), its repo-intel sample and its
+   * files through the git client. A file that cannot be read resolves to null.
+   */
+  get conventionSources(): RepoSources {
+    return (this._conventionSources ??= {
+      findRepo: async (workspaceId, repoId) => {
+        const row = await this.reposRepo.getById(workspaceId, repoId);
+        if (!row) return undefined;
+        return { ref: { owner: row.owner, name: row.name }, name: row.name, cloned: !!row.clonePath };
+      },
+      samplePaths: (repoId, n) => this.repoIntel.getConventionSamples(repoId, n),
+      readFile: (repo, path) => this.git.readFile(repo, path).catch(() => null),
+    });
   }
 
   get codeIndex(): CodeIndex {
@@ -169,7 +244,7 @@ export class Container {
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */
   get depgraph(): DepGraph {
     if (this.overrides.depgraph) return this.overrides.depgraph;
-    this._depgraph ??= new DepCruiseGraph();
+    this._depgraph ??= new DepCruiseGraph({ excludedDirs: EXCLUDED_DIRS });
     return this._depgraph;
   }
 
@@ -239,6 +314,19 @@ export class Container {
     const key = await this.secrets.get('ANTHROPIC_API_KEY');
     if (!key) throw new ConfigError('ANTHROPIC_API_KEY is not configured');
     return new AnthropicProvider(key);
+  }
+
+  /**
+   * The provider client and model the workspace chose for a system feature (Settings → Feature
+   * models), falling back to the registry default.
+   * @param workspaceId Tenant scope.
+   * @param id Feature id.
+   * @returns The provider client and the model id.
+   * @throws ConfigError when the provider's key is not configured.
+   */
+  async featureLlm(workspaceId: string, id: FeatureModelId): Promise<{ llm: LLMProvider; model: string }> {
+    const choice = await resolveFeatureModel(this, workspaceId, id);
+    return { llm: await this.llm(choice.provider), model: choice.model };
   }
 
   async embedder(): Promise<Embedder> {

@@ -95,6 +95,34 @@ describe("ImportSkillModal", () => {
     await waitFor(() => expect(createMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ name: "flaky-tests" })));
   });
 
+  it("previews a handed-over URL at once and reports the save through onSaved", async () => {
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    render(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <ToastProvider>
+          <ImportSkillModal
+            source="url"
+            initialUrl="https://github.com/org/repo/blob/main/SKILL.md"
+            onClose={onClose}
+            onSaved={onSaved}
+          />
+        </ToastProvider>
+      </NextIntlClientProvider>,
+    );
+    await screen.findByText("You are importing someone else's instructions");
+    expect(previewMutateAsync).toHaveBeenCalledTimes(1);
+    expect(previewMutateAsync).toHaveBeenCalledWith({ kind: "url", url: "https://github.com/org/repo/blob/main/SKILL.md" });
+
+    fireEvent.click(screen.getByText("Back"));
+    expect(screen.getByLabelText("Skill URL")).toHaveValue("https://github.com/org/repo/blob/main/SKILL.md");
+    fireEvent.click(screen.getByText("Preview"));
+    await screen.findByText("You are importing someone else's instructions");
+    fireEvent.click(screen.getByText("Save skill"));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows a refused preview inline and stores nothing", async () => {
     previewMutateAsync.mockRejectedValueOnce(new Error("The archive holds no SKILL.md or Markdown file."));
     renderModal("file");

@@ -1,0 +1,15 @@
+{
+  "name": "Conventions: sidebar entry and the empty extractor page",
+  "description": "From the seeded repo's PR list, follow the SKILLS LAB → Conventions sidebar link and confirm the repo-scoped Conventions page renders its empty state with the Run extraction action. Read-only: the extraction is not started (it needs a model key and a real clone). Assumes a freshly-seeded DB where acme/payments-api is the first repo (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "repos and pulls settle" },
+    { "cmd": ["find", "role", "link", "click", "--name", "Conventions"], "label": "open Conventions from the sidebar" },
+    { "cmd": ["wait", "--url", "/conventions"], "label": "repo-scoped conventions route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "conventions fetch settles" },
+    { "cmd": ["wait", "--text", "Conventions in"], "label": "page heading renders" },
+    { "cmd": ["wait", "--text", "No conventions extracted yet"], "label": "empty state renders before the first scan" },
+    { "cmd": ["wait", "--text", "Run extraction"], "label": "the extraction action is offered" }
+  ]
+}

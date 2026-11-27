@@ -1,10 +1,13 @@
 import type {
+  CommunitySkillSearchResult,
   Skill,
+  SkillCategoryCount,
   SkillCreateBody,
   SkillListItem,
   SkillUpdateBody,
   SkillVersion,
 } from '@devdigest/shared';
+import type { SkillLinkCount, SkillRunCounts } from './domain.js';
 
 /**
  * Ports of the skills use cases. Declared here, in the core's vocabulary (contract shapes, no
@@ -16,6 +19,12 @@ import type {
 export interface NewSkill extends Omit<SkillCreateBody, 'source'> {
   source: NonNullable<SkillCreateBody['source']>;
 }
+
+/**
+ * The fields of an update that the `skills` row stores. The version note is not one of them:
+ * it belongs to the snapshot (`snapshotVersion`), never to the skill.
+ */
+export type SkillPatch = Omit<SkillUpdateBody, 'note'>;
 
 /** Persistence of skills and their body snapshots. */
 export interface SkillsStore {
@@ -57,7 +66,7 @@ export interface SkillsStore {
   update(
     workspaceId: string,
     id: string,
-    patch: SkillUpdateBody,
+    patch: SkillPatch,
     version?: number,
   ): Promise<Skill | undefined>;
   /**
@@ -68,16 +77,18 @@ export interface SkillsStore {
    */
   delete(workspaceId: string, id: string): Promise<boolean>;
   /**
-   * Record a body as an immutable snapshot. Idempotent per version.
+   * Record a body as an immutable snapshot. Idempotent per version: a second call for the same
+   * version changes nothing, note included.
    * @param skillId Skill id (already checked to be in the caller's workspace).
    * @param version Version number of the snapshot.
    * @param body The body at that version.
+   * @param note What changed in this version; omitted or null, the snapshot has no note.
    * @returns Resolves when stored.
    */
-  snapshotVersion(skillId: string, version: number, body: string): Promise<void>;
+  snapshotVersion(skillId: string, version: number, body: string, note?: string | null): Promise<void>;
   /**
    * @param skillId Skill id.
-   * @returns Body snapshots, newest first.
+   * @returns Body snapshots with their notes, newest first.
    */
   listVersions(skillId: string): Promise<SkillVersion[]>;
   /**
@@ -105,6 +116,60 @@ export interface AgentSkillsReader {
    * @returns The agent's linked skills that are enabled, in link order.
    */
   enabledForAgent(workspaceId: string, agentId: string): Promise<Skill[]>;
+}
+
+/** Reads the skills side of the Skills Lab stats: which skills exist and who links them. */
+export interface SkillStatsReader {
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillId Only this skill; omitted, every skill of the workspace.
+   * @returns The workspace's skills (or the one skill) with their current link counts, by skill
+   *   name; empty when the skill is not in this workspace.
+   */
+  linkCounts(workspaceId: string, skillId?: string): Promise<SkillLinkCount[]>;
+}
+
+/** The finished review runs of the stats window and what they recorded per skill. */
+export interface SkillRunUsage {
+  /** Finished review runs of the workspace in the window. */
+  runs: number;
+  /** Counts of the requested skills that some run loaded; a skill no run loaded may be absent. */
+  skills: SkillRunCounts[];
+}
+
+/**
+ * Reads how review runs used skills. The runs, their traces and their findings belong to the
+ * reviews module, which implements this port (wired in the composition root). Only finished runs
+ * count; a run counts for a skill when its trace recorded the skill's prompt block. The window is
+ * measured with the database clock.
+ */
+export interface SkillRunUsageReader {
+  /**
+   * One read for any number of skills (no query per skill).
+   * @param workspaceId Tenant scope.
+   * @param skillIds Skills to count.
+   * @param windowDays Days to look back.
+   * @returns The workspace's run count and the counts of the requested skills.
+   */
+  runUsage(workspaceId: string, skillIds: string[], windowDays: number): Promise<SkillRunUsage>;
+  /**
+   * @param workspaceId Tenant scope.
+   * @param skillId Skill id.
+   * @param windowDays Days to look back.
+   * @returns Findings of the skill's runs in the window per category, most frequent first.
+   */
+  findingsByCategory(workspaceId: string, skillId: string, windowDays: number): Promise<SkillCategoryCount[]>;
+}
+
+/** Finds community skills (`SKILL.md` files) in public GitHub repositories. */
+export interface CommunitySkillSearch {
+  /**
+   * @param query Search text (2–100 characters).
+   * @returns The hits, or `{ configured: false, items: [] }` when no GitHub token is set.
+   * @throws ExternalServiceError when GitHub cannot be reached, refuses the token, rate-limits
+   *   the search or does not answer in time.
+   */
+  search(query: string): Promise<CommunitySkillSearchResult>;
 }
 
 /** One file entry of an archive. */

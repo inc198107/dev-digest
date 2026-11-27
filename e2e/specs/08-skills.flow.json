@@ -1,19 +1,24 @@
 {
-  "name": "Skills Lab: seeded skills, their preview and the skill editor",
-  "description": "Loads /skills and confirms the seeded Test Quality Reviewer skills render as cards; opens a skill's side preview (the block the agent receives), then the skill editor, which shows the agent linking it and the version history. Read-only: nothing is saved. Section labels are upper-cased by CSS and agent-browser matches rendered text, so the steps wait on texts without text-transform; clicks target role-bearing elements (cards are role=button, the drawer action is a button).",
+  "name": "Skills Lab: /skills opens the editor of the first skill; tabs, stats and community search",
+  "description": "Loads /skills, which opens the skill editor of the first seeded skill on its default Preview tab (no separate list page: the editor shows the skill list on the left). Picks another seeded skill in that list, checks the block the agent receives, the agent linking it (Config), the usage stats and the version history, then opens the community search drawer from Add skill (no search is typed, so no GitHub call). Read-only: nothing is saved. Section labels are upper-cased by CSS and agent-browser matches rendered text, so the steps wait on texts without text-transform; clicks target role-bearing elements (cards are role=button, tabs and menu items are buttons).",
   "steps": [
     { "cmd": ["open", "{BASE}/skills"], "label": "load the skills page" },
-    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--url", "/skills/"], "label": "redirected to the first skill's editor" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
-    { "cmd": ["wait", "--text", "untested-branches"], "label": "seeded skill card is visible" },
-    { "cmd": ["wait", "--text", "mocking-discipline"], "label": "another seeded skill card is visible" },
-    { "cmd": ["find", "text", "untested-branches", "click"], "label": "open the skill preview" },
-    { "cmd": ["wait", "--text", "Skill: untested-branches"], "label": "side preview renders the prompt block heading" },
-    { "cmd": ["find", "role", "button", "click", "--name", "Edit skill"], "label": "open the skill editor" },
-    { "cmd": ["wait", "--url", "tab=config"], "label": "skill editor route reached" },
-    { "cmd": ["wait", "--load", "networkidle"], "label": "skill fetch settles" },
+    { "cmd": ["wait", "--text", "Rendered as the reviewing agent receives it"], "label": "the editor opens on the Preview tab" },
+    { "cmd": ["wait", "--text", "untested-branches"], "label": "seeded skill is in the list" },
+    { "cmd": ["wait", "--text", "mocking-discipline"], "label": "another seeded skill is in the list" },
+    { "cmd": ["find", "text", "untested-branches", "click"], "label": "pick a skill in the list" },
+    { "cmd": ["wait", "--text", "Skill: untested-branches"], "label": "preview renders the block the agent receives" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Config"], "label": "open the Config tab" },
+    { "cmd": ["wait", "--url", "tab=config"], "label": "Config tab route reached" },
     { "cmd": ["wait", "--text", "Linked to 1 agent: Test Quality Reviewer"], "label": "editor names the agent that links the skill" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Stats"], "label": "open the Stats tab" },
+    { "cmd": ["wait", "--text", "Last 30 days of review runs in this workspace."], "label": "the skill's usage stats render" },
     { "cmd": ["find", "role", "button", "click", "--name", "Versions"], "label": "open the Versions tab" },
-    { "cmd": ["wait", "--text", "Version history"], "label": "the skill's version history renders" }
+    { "cmd": ["wait", "--text", "Version history"], "label": "the skill's version history renders" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Add skill"], "label": "open the Add skill menu" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Search community skills…"], "label": "open the community search drawer" },
+    { "cmd": ["wait", "--text", "Type at least 2 characters"], "label": "the drawer shows its search hint" }
   ]
 }

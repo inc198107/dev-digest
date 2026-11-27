@@ -28,13 +28,15 @@ flowchart TD
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
   AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
-  SKILLS["/skills<br/>skill cards · side preview<br/>create · import file/URL"] --> SKILL["/skills/:id<br/>editor (config · preview · versions)"]
+  SKILLS["/skills<br/>opens the first skill · empty state<br/>create · import file/URL · community search"] -->|"redirect"| SKILL["/skills/:id<br/>skill list + editor (preview · config · stats · versions + diff)"]
+  CONV["/repos/:repoId/conventions<br/>scan · accept · reword · reject<br/>create skill from accepted"] -->|"POST /skills (extracted)"| SKILL
   SETTINGS["/settings/:section<br/>API keys · models"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills"| API
-  SKILLS -->|"/skills · /skills/:id · /skills/:id/versions<br/>POST /skills/import/(file|url) (preview, nothing stored)"| API
+  SKILLS -->|"/skills · /skills/:id · /skills/:id/versions<br/>/skills/stats · /skills/:id/stats · /skills/community?q=<br/>POST /skills/import/(file|url) (preview, nothing stored)"| API
+  CONV -->|"/repos/:id/conventions(/extract|/accepted)<br/>PUT · DELETE /conventions/:id"| API
   SETTINGS -->|"/settings · /providers"| API
 ```
 

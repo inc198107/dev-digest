@@ -1,11 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { Skill, SkillListItem, SkillUpdateBody, SkillVersion } from '@devdigest/shared';
-import { ConflictError, NotFoundError, ValidationError } from '../src/platform/errors.js';
-import { SkillPromptBlocks, SkillsService } from '../src/modules/skills/service.js';
+import type { CommunitySkillSearchResult, Skill, SkillListItem, SkillVersion } from '@devdigest/shared';
+import { ConflictError, ExternalServiceError, NotFoundError, ValidationError } from '../src/platform/errors.js';
+import {
+  CommunitySkillsService,
+  SkillPromptBlocks,
+  SkillStatsService,
+  SkillsService,
+} from '../src/modules/skills/service.js';
 import type {
   ArchiveEntry,
   ArchiveReader,
+  CommunitySkillSearch,
   NewSkill,
+  SkillPatch,
+  SkillRunUsageReader,
+  SkillStatsReader,
   SkillsStore,
   SkillsUnitOfWork,
   TextFetcher,
@@ -61,13 +70,17 @@ class FakeSkillsStore implements SkillsStore {
   async update(
     workspaceId: string,
     id: string,
-    patch: SkillUpdateBody,
+    patch: SkillPatch,
     version?: number,
   ): Promise<Skill | undefined> {
     const s = this.skills.get(id);
     if (!s || s.workspaceId !== workspaceId) return undefined;
     if (patch.name !== undefined && patch.name !== s.name) this.assertFree(workspaceId, patch.name);
-    const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    /** Only the skill columns, like the repository: a stray `note` never lands on the skill. */
+    const columns = ['name', 'description', 'type', 'body', 'enabled'] as const;
+    const defined = Object.fromEntries(
+      columns.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]]),
+    );
     const next = { ...s, ...defined, ...(version !== undefined ? { version } : {}) };
     this.skills.set(id, next);
     return strip(next);
@@ -78,9 +91,9 @@ class FakeSkillsStore implements SkillsStore {
     this.versions = this.versions.filter((v) => v.skill_id !== id);
     return this.skills.delete(id);
   }
-  async snapshotVersion(skillId: string, version: number, body: string): Promise<void> {
+  async snapshotVersion(skillId: string, version: number, body: string, note?: string | null): Promise<void> {
     if (this.versions.some((v) => v.skill_id === skillId && v.version === version)) return;
-    this.versions.push({ skill_id: skillId, version, body, created_at: '2026-11-27T00:00:00.000Z' });
+    this.versions.push({ skill_id: skillId, version, body, note: note ?? null, created_at: '2026-11-27T00:00:00.000Z' });
   }
   async listVersions(skillId: string): Promise<SkillVersion[]> {
     return this.versions.filter((v) => v.skill_id === skillId).sort((a, b) => b.version - a.version);
@@ -262,6 +275,45 @@ describe('SkillsService', () => {
     expect(await service.restore(WS, skill.id, 1)).toMatchObject({ version: 1 });
   });
 
+  it('stores a note with the version an update creates, never on the skill', async () => {
+    const skill = await service.create(WS, body);
+    const updated = await service.update(WS, skill.id, { body: '# B2', note: '  Covers\n  early returns\u200B ' });
+    expect(updated).toMatchObject({ version: 2, body: '# B2' });
+    expect(updated).not.toHaveProperty('note');
+    expect(store.skills.get(skill.id)).not.toHaveProperty('note');
+    expect((await store.listVersions(skill.id)).map((v) => [v.version, v.note])).toEqual([
+      [2, 'Covers early returns'],
+      [1, null],
+    ]);
+  });
+
+  it('drops the note when the update creates no version', async () => {
+    const skill = await service.create(WS, body);
+    expect(await service.update(WS, skill.id, { enabled: false, note: 'Paused' })).toMatchObject({
+      enabled: false,
+      version: 1,
+    });
+    expect(await service.update(WS, skill.id, { body: '# B', note: 'Same body' })).toMatchObject({ version: 1 });
+    expect((await store.listVersions(skill.id)).map((v) => v.note)).toEqual([null]);
+  });
+
+  it('a blank or invisible-only note is stored as no note', async () => {
+    const skill = await service.create(WS, body);
+    await service.update(WS, skill.id, { body: '# B2', note: '\u200B  ' });
+    expect((await store.getVersion(skill.id, 2))?.note).toBeNull();
+  });
+
+  it('restore notes the version it creates', async () => {
+    const skill = await service.create(WS, body);
+    await service.update(WS, skill.id, { body: '# B2', note: 'Draft' });
+    await service.restore(WS, skill.id, 1);
+    expect((await store.listVersions(skill.id)).map((v) => [v.version, v.note])).toEqual([
+      [3, 'Restored from v1'],
+      [2, 'Draft'],
+      [1, null],
+    ]);
+  });
+
   it('restoring an unknown version is a 404', async () => {
     const skill = await service.create(WS, body);
     await expect(service.restore(WS, skill.id, 7)).rejects.toBeInstanceOf(NotFoundError);
@@ -335,6 +387,118 @@ describe('SkillsService', () => {
       origin: 'https://github.com/acme/skills/blob/main/remote/SKILL.md',
       skill_file: 'SKILL.md',
     });
+  });
+});
+
+describe('SkillStatsService', () => {
+  /** Calls the fakes receive, in order. */
+  let calls: string[];
+  beforeEach(() => {
+    calls = [];
+  });
+
+  /**
+   * @returns A skills-side reader over two fixed skills: 'a' linked by 2 agents, 'b' by none.
+   */
+  function fakeLinks(): SkillStatsReader {
+    const links = [
+      { skillId: 'a', usedBy: 2 },
+      { skillId: 'b', usedBy: 0 },
+    ];
+    return {
+      async linkCounts(workspaceId, skillId) {
+        calls.push(`links:${workspaceId}:${skillId ?? '*'}`);
+        return links.filter((l) => skillId === undefined || l.skillId === skillId);
+      },
+    };
+  }
+
+  /**
+   * @param runs Finished runs of the workspace in the window.
+   * @returns A review-runs reader where only skill 'a' was loaded by runs ('b' is absent).
+   */
+  function fakeRuns(runs: number): SkillRunUsageReader {
+    return {
+      async runUsage(workspaceId, skillIds, windowDays) {
+        calls.push(`runs:${workspaceId}:${skillIds.join(',')}:${windowDays}`);
+        const a = { skillId: 'a', skillRuns: 2, findings: 5, accepted: 3, dismissed: 1 };
+        return { runs, skills: skillIds.includes('a') ? [a] : [] };
+      },
+      async findingsByCategory(workspaceId, skillId, windowDays) {
+        calls.push(`categories:${workspaceId}:${skillId}:${windowDays}`);
+        return skillId === 'a' ? [{ category: 'testing', count: 4 }, { category: 'bug', count: 1 }] : [];
+      },
+    };
+  }
+
+  it('summarizes every skill with one read per side, over the 30-day window', async () => {
+    const service = new SkillStatsService({ stats: fakeLinks(), runs: fakeRuns(4) });
+    expect(await service.summary(WS)).toEqual([
+      { skill_id: 'a', used_by: 2, pull_frequency: 0.5, accept_rate: 0.75 },
+      { skill_id: 'b', used_by: 0, pull_frequency: 0, accept_rate: null },
+    ]);
+    expect(calls).toEqual([`links:${WS}:*`, `runs:${WS}:a,b:30`]);
+  });
+
+  it('returns the full stats of one skill', async () => {
+    expect(await new SkillStatsService({ stats: fakeLinks(), runs: fakeRuns(4) }).forSkill(WS, 'a')).toEqual({
+      skill_id: 'a',
+      used_by: 2,
+      runs_30d: 4,
+      skill_runs_30d: 2,
+      pull_frequency: 0.5,
+      accept_rate: 0.75,
+      findings_30d: 5,
+      findings_by_category: [
+        { category: 'testing', count: 4 },
+        { category: 'bug', count: 1 },
+      ],
+    });
+  });
+
+  it('rates are null without runs; an unknown skill is undefined without reading the runs', async () => {
+    const service = new SkillStatsService({ stats: fakeLinks(), runs: fakeRuns(0) });
+    expect(await service.forSkill(WS, 'b')).toMatchObject({ runs_30d: 0, pull_frequency: null, accept_rate: null });
+    calls = [];
+    expect(await service.forSkill(WS, 'missing')).toBeUndefined();
+    expect(calls).toEqual([`links:${WS}:missing`]);
+  });
+});
+
+describe('CommunitySkillsService', () => {
+  it('passes the collapsed query to the search port and returns its result', async () => {
+    const queries: string[] = [];
+    const result: CommunitySkillSearchResult = {
+      configured: true,
+      items: [
+        {
+          name: 'owasp-review',
+          description: 'Security skills',
+          repo: 'acme/skills',
+          path: 'owasp-review/SKILL.md',
+          url: 'https://github.com/acme/skills/blob/main/owasp-review/SKILL.md',
+          stars: 12,
+          language: null,
+        },
+      ],
+    };
+    const search: CommunitySkillSearch = {
+      search: async (q) => {
+        queries.push(q);
+        return result;
+      },
+    };
+    expect(await new CommunitySkillsService({ search }).search('  owasp \t review ')).toBe(result);
+    expect(queries).toEqual(['owasp review']);
+  });
+
+  it('lets the port errors through', async () => {
+    const search: CommunitySkillSearch = {
+      search: async () => {
+        throw new ExternalServiceError('GitHub search rate limit reached: try again in a minute');
+      },
+    };
+    await expect(new CommunitySkillsService({ search }).search('owasp')).rejects.toBeInstanceOf(ExternalServiceError);
   });
 });
 

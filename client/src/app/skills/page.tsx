@@ -1,10 +1,10 @@
-import { SkillsListView } from "./_components/SkillsListView";
+import { SkillsIndexView } from "./_components/SkillsIndexView";
 
 /**
- * Route /skills (Skills Lab list). Thin route entry: the view, its dialogs and drawer live
- * under _components.
- * @returns The skills list.
+ * Route /skills (Skills Lab). Thin route entry: the view opens the first skill in the editor, or
+ * shows the empty state with "Add skill".
+ * @returns The Skills Lab entry view.
  */
 export default function SkillsPage() {
-  return <SkillsListView />;
+  return <SkillsIndexView />;
 }

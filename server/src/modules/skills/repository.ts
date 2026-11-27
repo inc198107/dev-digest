@@ -1,10 +1,9 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type {
   Skill,
   SkillListItem,
   SkillSource,
   SkillType,
-  SkillUpdateBody,
   SkillUsage,
   SkillVersion,
 } from '@devdigest/shared';
@@ -12,13 +11,23 @@ import type { Db, DbExecutor } from '../../db/client.js';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
 import * as t from '../../db/schema.js';
 import { ConflictError } from '../../platform/errors.js';
-import type { AgentSkillsReader, NewSkill, SkillsStore, SkillsUnitOfWork } from './ports.js';
+import type {
+  AgentSkillsReader,
+  NewSkill,
+  SkillPatch,
+  SkillStatsReader,
+  SkillsStore,
+  SkillsUnitOfWork,
+} from './ports.js';
+import type { SkillLinkCount } from './domain.js';
 
 /**
  * Skills persistence (infrastructure ring). Owns `skills` and `skill_versions` and reads the
  * skill side of `agent_skills` ("used by", the skills of an agent's prompt). Implements the
- * SkillsStore and AgentSkillsReader ports: every method returns contract shapes, so Drizzle
- * rows never leave this file. Workspace-scoped wherever the caller passes a workspace.
+ * SkillsStore, AgentSkillsReader and SkillStatsReader ports: every method returns contract
+ * shapes, so Drizzle rows never leave this file. Workspace-scoped wherever the caller passes a
+ * workspace. The stats read only the skills side here (link counts); the review runs' side is
+ * the reviews module's, read through `SkillRunUsageReader`.
  */
 
 /** Name of the unique index on `skills (workspace_id, name)`. */
@@ -52,9 +61,13 @@ function toSkillVersion(row: SkillVersionRow): SkillVersion {
     skill_id: row.skillId,
     version: row.version,
     body: row.body,
+    note: row.note ?? null,
     created_at: row.createdAt.toISOString(),
   };
 }
+
+/** One row of the link-count query (postgres-js returns the `::int` cast as a number). */
+type LinkCountRow = { skill_id: string; used_by: number };
 
 /**
  * Recognize Postgres' unique violation on the skill name. postgres-js throws its error as is;
@@ -87,7 +100,7 @@ async function guardName<T>(name: string | undefined, write: () => Promise<T>): 
   }
 }
 
-export class SkillsRepository implements SkillsStore, AgentSkillsReader {
+export class SkillsRepository implements SkillsStore, AgentSkillsReader, SkillStatsReader {
   /**
    * @param db The shared client, or a transaction when built by the unit of work.
    */
@@ -158,6 +171,7 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader {
           body: input.body,
           enabled: input.enabled ?? true,
           version,
+          evidenceFiles: input.evidence_files ?? null,
         })
         .returning(),
     );
@@ -165,7 +179,8 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader {
   }
 
   /**
-   * Write the patch and, when given, the version the use case decided on. No rules here.
+   * Write the patch and, when given, the version the use case decided on. No rules here. Only
+   * the listed columns are written: anything else on the object (a version note) is ignored.
    * @param workspaceId Tenant scope.
    * @param id Skill id.
    * @param patch Fields to change.
@@ -176,7 +191,7 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader {
   async update(
     workspaceId: string,
     id: string,
-    patch: SkillUpdateBody,
+    patch: SkillPatch,
     version?: number,
   ): Promise<Skill | undefined> {
     const values = {
@@ -216,10 +231,14 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader {
    * @param skillId Skill id.
    * @param version Version number of the snapshot.
    * @param body The body at that version.
+   * @param note What changed in this version, or null.
    * @returns Resolves when stored (idempotent per version).
    */
-  async snapshotVersion(skillId: string, version: number, body: string): Promise<void> {
-    await this.db.insert(t.skillVersions).values({ skillId, version, body }).onConflictDoNothing();
+  async snapshotVersion(skillId: string, version: number, body: string, note?: string | null): Promise<void> {
+    await this.db
+      .insert(t.skillVersions)
+      .values({ skillId, version, body, note: note ?? null })
+      .onConflictDoNothing();
   }
 
   /**
@@ -271,6 +290,31 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader {
       )
       .orderBy(asc(t.agentSkills.order), asc(t.skills.name));
     return rows.map((r) => toSkill(r.skill));
+  }
+
+  /**
+   * The skills side of the Skills Lab stats: the workspace's skills with how many of its agents
+   * link each one now. The review runs' side is read through `SkillRunUsageReader`.
+   * @param workspaceId Tenant scope.
+   * @param skillId Only this skill; omitted, every skill of the workspace.
+   * @returns The skills with their link counts, by skill name; empty when the skill is not in
+   *   this workspace.
+   */
+  async linkCounts(workspaceId: string, skillId?: string): Promise<SkillLinkCount[]> {
+    const onlySkill = skillId === undefined ? sql`` : sql`AND s.id = ${skillId}`;
+    const rows = await this.db.execute<LinkCountRow>(sql`
+      SELECT s.id AS skill_id, coalesce(l.n, 0) AS used_by
+      FROM skills s
+      LEFT JOIN (
+        SELECT ak.skill_id, count(*)::int AS n
+        FROM agent_skills ak
+        JOIN agents a ON a.id = ak.agent_id
+        WHERE a.workspace_id = ${workspaceId}
+        GROUP BY ak.skill_id
+      ) l ON l.skill_id = s.id
+      WHERE s.workspace_id = ${workspaceId} ${onlySkill}
+      ORDER BY s.name`);
+    return [...rows].map((r) => ({ skillId: r.skill_id, usedBy: r.used_by }));
   }
 
   /**

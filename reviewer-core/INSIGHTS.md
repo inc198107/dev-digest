@@ -16,6 +16,7 @@
 
 ## Tool & Library Notes
 <!-- Dependency quirks: versions, flags, platform issues. -->
+- 2026-11-27 · `src/llm/openrouter.ts` `completeStructured` · When it throws "structured output failed schema validation for <schema>", call the OpenAI SDK against OpenRouter with the same request and read `finish_reason` + `usage.completion_tokens_details.reasoning_tokens` — the error drops the raw answer; for the conventions scan the cause was a reasoning model (`deepseek-v4-flash`) that used all of `max_tokens` (4000) on reasoning and returned empty content.
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->

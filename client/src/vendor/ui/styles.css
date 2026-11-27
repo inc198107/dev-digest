@@ -8,6 +8,8 @@
 
 :root,
 [data-theme="dark"] {
+  /* native widgets (the <select> option list, scrollbars) follow the theme */
+  color-scheme: dark;
   --bg-primary: #0a0a0a;
   --bg-surface: #141414;
   --bg-elevated: #1c1c1c;
@@ -47,6 +49,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg-primary: #ffffff;
   --bg-surface: #fafafa;
   --bg-elevated: #ffffff;
@@ -195,6 +198,59 @@ input,
 select,
 textarea {
   font-family: inherit;
+}
+/* The option list is drawn by the browser: a transparent <select> leaves it on the
+   UA default background while the text inherits the theme colour. */
+option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* ---- SelectInput (kit/SelectInput.tsx) ----
+   Where customizable <select> is supported, the option list is drawn in-page and
+   matches the SearchableSelect popover: padded rows, a soft hover, a check on the
+   selected row. Elsewhere it stays the native list, themed by the rules above. */
+.dd-select {
+  appearance: none;
+}
+@supports (appearance: base-select) {
+  .dd-select,
+  .dd-select::picker(select) {
+    appearance: base-select;
+  }
+  .dd-select::picker-icon {
+    display: none;
+  }
+  .dd-select::picker(select) {
+    margin-block: 6px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    background: var(--bg-elevated);
+    box-shadow: var(--shadow-modal);
+  }
+  .dd-select option {
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+  }
+  .dd-select option:hover,
+  .dd-select option:focus-visible {
+    background: var(--bg-hover);
+    outline: none;
+  }
+  /* hovering does not move focus: one highlighted row, the hovered one */
+  .dd-select:has(option:hover) option:focus-visible:not(:hover) {
+    background: transparent;
+  }
+  .dd-select option::checkmark {
+    color: var(--text-secondary);
+  }
 }
 
 a {

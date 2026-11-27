@@ -2,28 +2,32 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { FormField, SelectInput, Textarea, TextInput } from "@devdigest/ui";
+import { FormField, SelectInput, TextInput } from "@devdigest/ui";
 import type { SkillType } from "@devdigest/shared";
+import { SkillBodyEditor } from "../../../../components/skill-body-editor";
 import { SKILL_TYPES } from "../../../../components/skill-meta";
-import { estimateTokens, formatSkillBlock } from "../SkillBlockPreview";
+import { estimateTokens, formatSkillBlock } from "@/lib/skill-block";
 import type { SkillFormValue } from "./helpers";
-import { s } from "./styles";
 
 /**
  * The fields of a skill (create, import preview, Config tab): name, directive description,
- * type and the Markdown body with a live token estimate of the whole block.
+ * type and the Markdown body in the file-style editor with a live token estimate of the whole
+ * block.
  * @param props.value Current values.
  * @param props.onChange Receives the changed fields.
- * @param props.bodyRows Height of the body editor in rows.
+ * @param props.unsaved Mark the body editor "unsaved" (the form differs from what is stored).
+ * @param props.bodyRows Minimum height of the body editor in lines.
  * @returns The form fields.
  */
 export function SkillFields({
   value,
   onChange,
+  unsaved = false,
   bodyRows = 16,
 }: {
   value: SkillFormValue;
   onChange: (patch: Partial<SkillFormValue>) => void;
+  unsaved?: boolean;
   bodyRows?: number;
 }) {
   const t = useTranslations("skills");
@@ -55,22 +59,16 @@ export function SkillFields({
           options={typeOptions}
         />
       </FormField>
-      <FormField
-        label={t("fields.body")}
-        hint={t("fields.bodyHint")}
-        required
-        right={
-          <span className="mono tnum" style={s.tokens}>
-            {t("fields.tokens", { count: tokens })}
-          </span>
-        }
-      >
-        <Textarea
+      <FormField label={t("fields.body")} hint={t("fields.bodyHint")} required>
+        <SkillBodyEditor
+          fileName={`${value.name.trim() || t("fields.fileFallback")}.md`}
           value={value.body}
           onChange={(body) => onChange({ body })}
-          rows={bodyRows}
+          label={t("fields.body")}
+          tokensLabel={t("fields.tokens", { count: tokens })}
+          unsaved={unsaved}
           placeholder={t("fields.bodyPlaceholder")}
-          mono
+          minRows={bodyRows}
         />
       </FormField>
     </>

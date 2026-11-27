@@ -1,5 +1,19 @@
-import type { Skill, SkillIgnoredFile, SkillIgnoredReason, SkillUpdateBody } from '@devdigest/shared';
-import { MAX_SKILL_BODY_CHARS, MAX_SKILL_DESCRIPTION_CHARS, MAX_SKILL_NAME_CHARS, SkillType } from '@devdigest/shared';
+import type {
+  Skill,
+  SkillCategoryCount,
+  SkillIgnoredFile,
+  SkillIgnoredReason,
+  SkillStats,
+  SkillStatsSummary,
+  SkillUpdateBody,
+} from '@devdigest/shared';
+import {
+  MAX_SKILL_BODY_CHARS,
+  MAX_SKILL_DESCRIPTION_CHARS,
+  MAX_SKILL_NAME_CHARS,
+  MAX_SKILL_NOTE_CHARS,
+  SkillType,
+} from '@devdigest/shared';
 import {
   ARCHIVE_EXTENSIONS,
   BINARY_EXTENSIONS,
@@ -58,9 +72,148 @@ export function planSkillVersion(
 }
 
 /**
+ * Clean the "what changed" note of a version: invisible characters removed, whitespace runs
+ * collapsed to one space, capped at the contract limit. The note is metadata: it never reaches
+ * the prompt and never decides whether a version is created.
+ * @param raw The note as sent, if any.
+ * @returns The note to store, or null when none was sent or nothing visible remains.
+ */
+export function cleanVersionNote(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null) return null;
+  const note = stripHiddenCharacters(raw).text.replace(/\s+/g, ' ').trim().slice(0, MAX_SKILL_NOTE_CHARS).trim();
+  return note === '' ? null : note;
+}
+
+/**
+ * @param version The version whose body a restore copies.
+ * @returns The note stored with the version the restore creates.
+ */
+export function restoreNote(version: number): string {
+  return `Restored from v${version}`;
+}
+
+/** A skill of the workspace with the number of agents that link it now. */
+export interface SkillLinkCount {
+  skillId: string;
+  /** Agents that link the skill now. */
+  usedBy: number;
+}
+
+/** What the review runs of the stats window recorded for one skill. */
+export interface SkillRunCounts {
+  skillId: string;
+  /** Finished runs in the window whose prompt loaded the skill. */
+  skillRuns: number;
+  /** Findings of those runs. */
+  findings: number;
+  /** Of those findings, accepted ones. */
+  accepted: number;
+  /** Of those findings, dismissed ones. */
+  dismissed: number;
+}
+
+/**
+ * Join the skills side (who links each skill) with what the review runs recorded. A skill no run
+ * loaded gets zero counts.
+ * @param links The skills to report, in the order to report them.
+ * @param runs Counts per skill from the review runs; skills missing here count as unused.
+ * @returns One entry per link, in the links' order.
+ */
+export function mergeSkillUsage(links: SkillLinkCount[], runs: SkillRunCounts[]): SkillUsageCounts[] {
+  const byId = new Map(runs.map((r) => [r.skillId, r]));
+  return links.map((link) => {
+    const counts = byId.get(link.skillId);
+    return {
+      skillId: link.skillId,
+      usedBy: link.usedBy,
+      skillRuns: counts?.skillRuns ?? 0,
+      findings: counts?.findings ?? 0,
+      accepted: counts?.accepted ?? 0,
+      dismissed: counts?.dismissed ?? 0,
+    };
+  });
+}
+
+/** Raw counts of one skill over the stats window: its links plus what the runs recorded. */
+export interface SkillUsageCounts {
+  skillId: string;
+  /** Agents that link the skill now. */
+  usedBy: number;
+  /** Finished runs in the window whose prompt loaded the skill. */
+  skillRuns: number;
+  /** Findings of those runs. */
+  findings: number;
+  /** Of those findings, accepted ones. */
+  accepted: number;
+  /** Of those findings, dismissed ones. */
+  dismissed: number;
+}
+
+/**
+ * A share in [0, 1].
+ * @param part Counted items.
+ * @param whole All items.
+ * @returns part / whole, clamped to [0, 1]; null when `whole` is 0 (nothing to measure).
+ */
+export function ratio(part: number, whole: number): number | null {
+  if (!(whole > 0)) return null;
+  return Math.min(1, Math.max(0, part / whole));
+}
+
+/**
+ * How often a skill was in the prompt.
+ * @param skillRuns Runs in the window that loaded the skill.
+ * @param runs All finished runs of the workspace in the window.
+ * @returns skillRuns / runs, or null without runs.
+ */
+export function pullFrequency(skillRuns: number, runs: number): number | null {
+  return ratio(skillRuns, runs);
+}
+
+/**
+ * How many decided findings of a skill's runs were accepted. Undecided findings do not count.
+ * @param accepted Accepted findings.
+ * @param dismissed Dismissed findings.
+ * @returns accepted / (accepted + dismissed), or null when none was decided.
+ */
+export function acceptRate(accepted: number, dismissed: number): number | null {
+  return ratio(accepted, accepted + dismissed);
+}
+
+/**
+ * @param counts The skill's counts over the window.
+ * @param runs Finished runs of the workspace in the window.
+ * @returns The card numbers of the skill.
+ */
+export function toSkillStatsSummary(counts: SkillUsageCounts, runs: number): SkillStatsSummary {
+  return {
+    skill_id: counts.skillId,
+    used_by: counts.usedBy,
+    pull_frequency: pullFrequency(counts.skillRuns, runs),
+    accept_rate: acceptRate(counts.accepted, counts.dismissed),
+  };
+}
+
+/**
+ * @param counts The skill's counts over the window.
+ * @param runs Finished runs of the workspace in the window.
+ * @param categories Findings of the skill's runs per category.
+ * @returns The skill's stats.
+ */
+export function toSkillStats(counts: SkillUsageCounts, runs: number, categories: SkillCategoryCount[]): SkillStats {
+  return {
+    ...toSkillStatsSummary(counts, runs),
+    runs_30d: runs,
+    skill_runs_30d: counts.skillRuns,
+    findings_30d: counts.findings,
+    findings_by_category: categories,
+  };
+}
+
+/**
  * Render a skill as the block appended to an agent's prompt: the name as a heading, the
  * description (the skill's interface) as a quote line, then the body. The client's preview
- * mirrors this format (`client/src/app/skills/_lib/skill-block.ts`).
+ * mirrors this format (`client/src/lib/skill-block.ts`).
  * @param skill The model-visible fields.
  * @returns The Markdown block.
  */

@@ -56,3 +56,15 @@ export function mergeStored(synced: SkillFormValue, stored: SkillFormValue, valu
 export function bumpsVersion(patch: SkillUpdateBody): boolean {
   return patch.name !== undefined || patch.description !== undefined || patch.body !== undefined;
 }
+
+/**
+ * Attach the "what changed" note to a patch that creates a version. A metadata-only patch (type)
+ * creates none, so the note is dropped there, as is a blank note.
+ * @param patch The changed fields.
+ * @param note The note as typed.
+ * @returns The patch, with the trimmed note when it labels a new version.
+ */
+export function withNote(patch: SkillUpdateBody, note: string): SkillUpdateBody {
+  const trimmed = note.trim();
+  return bumpsVersion(patch) && trimmed.length > 0 ? { ...patch, note: trimmed } : patch;
+}

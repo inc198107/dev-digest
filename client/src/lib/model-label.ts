@@ -28,10 +28,23 @@ export function modelLabel(m: PricedModel): string {
   return parts.length ? `${m.id} — ${parts.join(" · ")}` : m.id;
 }
 
+/** A model-picker option: a bare id, or an id with a rich label. */
+export type ModelOption = string | { value: string; label: string };
+
+/**
+ * Keep the current model selectable when it is missing from the live list (a registry
+ * default, a model saved under another key, or an empty list after a failed load).
+ * @param options - options built by `toModelOptions`
+ * @param current - the selected model id; an empty id adds nothing
+ * @returns `options`, prefixed with `current` when it is not among them
+ */
+export function withCurrentModel(options: ModelOption[], current: string): ModelOption[] {
+  if (!current || options.some((o) => (typeof o === "string" ? o : o.value) === current)) return options;
+  return [current, ...options];
+}
+
 /** Build SearchableSelect/SelectInput options: priced models get a rich label. */
-export function toModelOptions(
-  models: PricedModel[] | undefined,
-): (string | { value: string; label: string })[] {
+export function toModelOptions(models: PricedModel[] | undefined): ModelOption[] {
   return (models ?? []).map((m) =>
     m.pricing || m.contextLength ? { value: m.id, label: modelLabel(m) } : m.id,
   );

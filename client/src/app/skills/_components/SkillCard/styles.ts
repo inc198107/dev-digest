@@ -58,11 +58,13 @@ export const s = {
   } satisfies CSSProperties,
   footer: {
     display: "flex",
-    gap: 10,
+    alignItems: "center",
+    gap: 6,
     marginTop: 10,
     paddingTop: 10,
     borderTop: "1px solid var(--border)",
     fontSize: 11.5,
     color: "var(--text-muted)",
   } satisfies CSSProperties,
+  version: { marginLeft: "auto" } satisfies CSSProperties,
 } as const;

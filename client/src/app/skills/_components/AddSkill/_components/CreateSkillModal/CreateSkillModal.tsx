@@ -56,7 +56,12 @@ export function CreateSkillModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div style={s.body}>
-        <SkillFields value={value} onChange={(patch) => setValue((v) => ({ ...v, ...patch }))} bodyRows={12} />
+        <SkillFields
+          value={value}
+          onChange={(patch) => setValue((v) => ({ ...v, ...patch }))}
+          bodyRows={12}
+          unsaved
+        />
       </div>
     </Modal>
   );

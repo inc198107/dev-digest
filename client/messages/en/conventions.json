@@ -6,21 +6,66 @@
     "repoFallback": "repo",
     "subtitle": "Scan the cloned repo to surface house-rules — each backed by evidence you can turn into a Skill.",
     "scanning": "Scanning…",
+    "scanningHint": "Reading the most central files and asking the model. This can take a minute or two.",
     "rescan": "Re-scan",
     "runExtraction": "Run extraction",
     "extractionFailed": "Extraction failed",
+    "scanDone": "Found {count, plural, one {# convention} other {# conventions}} in {files, plural, one {# file} other {# files}}",
     "loadError": "Could not load conventions.",
+    "retry": "Retry",
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "summary": "{count, plural, one {# candidate} other {# candidates}} from {files, plural, one {# file} other {# files}} · last scan {ago}",
+    "ago": {
+      "justNow": "just now",
+      "minutes": "{count}m ago",
+      "hours": "{count}h ago",
+      "days": "{count}d ago"
+    }
+  },
+  "toolbar": {
+    "acceptAll": "Accept all",
+    "deselectAll": "Deselect all",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "createSkill": "Create skill",
+    "createSkillHint": "Accept at least one convention to build a skill from it."
   },
   "card": {
     "confidence": "Confidence",
+    "accept": "Accept",
     "accepted": "Accepted",
-    "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "reject": "Reject",
+    "edit": "Edit rule",
+    "ruleLabel": "Rule",
+    "save": "Save",
+    "cancel": "Cancel",
+    "ruleEmpty": "The rule cannot be empty.",
+    "ruleTooLong": "At most {max} characters.",
+    "copy": "Copy snippet",
+    "copied": "Snippet copied",
+    "openOnGithub": "Open {path} on GitHub"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "banner": "Merged from <b>{count, plural, one {# accepted convention} other {# accepted conventions}}</b> in <accent>{repo}</accent>. Everything below is editable before you save.",
+    "name": "Name",
+    "nameInvalid": "Use kebab-case: lower-case letters, digits and single hyphens.",
+    "nameTaken": "A skill with this name already exists.",
+    "description": "Description",
+    "type": "Type",
+    "typeHint": "Skills built from conventions are always of type convention.",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "body": "Skill body",
+    "tokens": "{count} tokens",
+    "bodyTooLong": "The body is longer than {max} characters.",
+    "footer": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "created": "Skill {name} created"
   }
 }

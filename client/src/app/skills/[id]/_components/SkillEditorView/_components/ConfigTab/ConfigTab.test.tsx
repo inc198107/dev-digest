@@ -29,6 +29,9 @@ const SKILL: SkillListItem = {
   used_by: [{ agent_id: "a1", name: "Test Quality Reviewer" }],
 };
 
+/** Accessible name of the body editor. */
+const BODY = "Skill body (Markdown)";
+
 beforeEach(() => {
   updateMutate.mockReset();
   deleteMutate.mockReset();
@@ -65,7 +68,7 @@ describe("skill Config tab", () => {
   it("saves only the changed fields and announces the next version for a body edit", () => {
     renderTab();
     expect(screen.getByText("Save skill")).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: "" }), { target: { value: "# Boundary cases v5" } });
+    fireEvent.change(screen.getByLabelText(BODY), { target: { value: "# Boundary cases v5" } });
     expect(screen.getByText("Saving snapshots the body as v5.")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Save skill"));
     expect(updateMutate).toHaveBeenCalledWith(
@@ -95,7 +98,7 @@ describe("skill Config tab", () => {
     const { rerender } = renderTab();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "boundary-renamed" } });
     rerender(tab({ ...SKILL, version: 5, body: "# Restored v2 body" }));
-    expect(screen.getByRole("textbox", { name: "" })).toHaveValue("# Restored v2 body");
+    expect(screen.getByLabelText(BODY)).toHaveValue("# Restored v2 body");
 
     fireEvent.click(screen.getByText("Save skill"));
     expect(updateMutate).toHaveBeenCalledWith({ id: "s1", patch: { name: "boundary-renamed" } }, expect.anything());
@@ -108,7 +111,7 @@ describe("skill Config tab", () => {
     expect(screen.getByText("Save skill")).toBeDisabled();
 
     rerender(tab({ ...SKILL, type: "security", version: 5, body: "# Restored v2 body" }));
-    expect(screen.getByRole("textbox", { name: "" })).toHaveValue("# Restored v2 body");
+    expect(screen.getByLabelText(BODY)).toHaveValue("# Restored v2 body");
     expect(screen.getByText("Save skill")).toBeDisabled();
   });
 
@@ -116,6 +119,42 @@ describe("skill Config tab", () => {
     const { rerender } = renderTab();
     rerender(tab({ ...SKILL, version: 5, description: "Padded description. " }));
     expect(screen.getByLabelText("Description")).toHaveValue("Padded description. ");
+  });
+
+  it("marks the body editor unsaved only while the form differs from the stored skill", () => {
+    renderTab();
+    expect(screen.getByText("boundary-cases.md")).toBeInTheDocument();
+    expect(screen.queryByText("unsaved")).toBeNull();
+    fireEvent.change(screen.getByLabelText(BODY), { target: { value: "# Boundary cases v5" } });
+    expect(screen.getByText("unsaved")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByText("unsaved")).toBeNull();
+  });
+
+  it("sends the trimmed “what changed” note with a body edit and clears it after saving", () => {
+    updateMutate.mockImplementation((_input, opts?: { onSuccess?: (saved: { version: number }) => void }) =>
+      opts?.onSuccess?.({ version: 5 }),
+    );
+    renderTab();
+    expect(screen.queryByLabelText("What changed")).toBeNull();
+    fireEvent.change(screen.getByLabelText(BODY), { target: { value: "# Boundary cases v5" } });
+    expect(screen.getByText(/Titles v5 in the version history/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("What changed"), { target: { value: "  Cover empty arrays  " } });
+    expect(screen.getByLabelText("What changed")).toHaveAttribute("maxLength", "200");
+    fireEvent.click(screen.getByText("Save skill"));
+    expect(updateMutate).toHaveBeenCalledWith(
+      { id: "s1", patch: { body: "# Boundary cases v5", note: "Cover empty arrays" } },
+      expect.anything(),
+    );
+    expect(screen.getByLabelText("What changed")).toHaveValue("");
+  });
+
+  it("offers no note for a type-only change and sends none", () => {
+    renderTab();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "security" } });
+    expect(screen.queryByLabelText("What changed")).toBeNull();
+    fireEvent.click(screen.getByText("Save skill"));
+    expect(updateMutate).toHaveBeenCalledWith({ id: "s1", patch: { type: "security" } }, expect.anything());
   });
 
   it("cannot save an invalid name", () => {

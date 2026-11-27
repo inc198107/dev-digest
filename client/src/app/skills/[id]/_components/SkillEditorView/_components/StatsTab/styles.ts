@@ -1,0 +1,50 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for the skill Stats tab. */
+export const s = {
+  wrap: { maxWidth: 900 } satisfies CSSProperties,
+  h2: { fontSize: 18, fontWeight: 700, marginBottom: 4 } satisfies CSSProperties,
+  subtitle: { fontSize: 13, color: "var(--text-muted)", marginBottom: 16 } satisfies CSSProperties,
+  cards: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 16 } satisfies CSSProperties,
+  panels: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 } satisfies CSSProperties,
+  agentList: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
+  agentRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 10px",
+    borderRadius: 7,
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  agentIcon: { color: "var(--accent)", flexShrink: 0 } satisfies CSSProperties,
+  agentName: {
+    flex: 1,
+    minWidth: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  open: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "3px 9px",
+    borderRadius: 6,
+    border: "1px solid var(--border-strong)",
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  donut: { display: "grid", placeItems: "center", paddingTop: 4 } satisfies CSSProperties,
+  muted: { fontSize: 12.5, color: "var(--text-muted)" } satisfies CSSProperties,
+  empty: {
+    border: "1px dashed var(--border-strong)",
+    borderRadius: 9,
+    marginBottom: 16,
+  } satisfies CSSProperties,
+  footnote: { display: "flex", gap: 6, fontSize: 12, color: "var(--text-muted)", marginTop: 14 } satisfies CSSProperties,
+  footnoteIcon: { flexShrink: 0, marginTop: 2 } satisfies CSSProperties,
+} as const;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SkillListItem, SkillVersion } from '@devdigest/shared';
+import { SkillListItem, SkillStatsSummary, SkillVersion } from '@devdigest/shared';
 
 /**
  * Route-only Zod schemas of the skills module (http ring). Bodies and response shapes the
@@ -15,6 +15,7 @@ export const SkillVersionParams = z.object({
 
 export const SkillList = z.array(SkillListItem);
 export const SkillVersionList = z.array(SkillVersion);
+export const SkillStatsList = z.array(SkillStatsSummary);
 
 /** Acknowledgement returned by DELETE. */
 export const Ok = z.object({ ok: z.literal(true) });

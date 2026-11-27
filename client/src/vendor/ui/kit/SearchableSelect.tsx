@@ -5,10 +5,43 @@ type SelectOption = string | { value: string; label: string };
 const optValue = (o: SelectOption) => (typeof o === "string" ? o : o.value);
 const optLabel = (o: SelectOption) => (typeof o === "string" ? o : o.label);
 
+/** Gap between the trigger and the list (px). */
+const GAP = 6;
+/** Height of the filter row plus the list padding and borders (px). */
+const CHROME_HEIGHT = 56;
+
+/**
+ * Where the open list sits, in viewport coordinates. Both `top` and `bottom` are
+ * always set: dropping one from the inline style would expose the UA
+ * `[popover] { inset: 0 }` rule and pin the list to the viewport edge.
+ */
+type Placement = { left: number; width: number; top: number | "auto"; bottom: number | "auto" };
+
+/**
+ * Place the list under the trigger, or above it when the space below is short.
+ * @param trigger - the trigger's viewport rect
+ * @param listHeight - the tallest the list can get (px)
+ * @returns fixed-position coordinates for the list
+ */
+function placeList(trigger: DOMRect, listHeight: number): Placement {
+  const below = window.innerHeight - trigger.bottom;
+  const flip = below < listHeight + GAP && trigger.top > below;
+  const x = { left: trigger.left, width: trigger.width };
+  return flip
+    ? { ...x, top: "auto", bottom: window.innerHeight - trigger.top + GAP }
+    : { ...x, top: trigger.bottom + GAP, bottom: "auto" };
+}
+
 /**
  * Searchable single-select — same options API as SelectInput, but with a filter
  * box + keyboard nav, for long lists (e.g. the 300+ OpenRouter models). Filters
- * by value and label; Enter selects, ↑/↓ move, Esc closes.
+ * by value and label; Enter selects, ↑/↓ move, Esc closes. The open list is a
+ * manual popover in the top layer, fixed to the trigger, so a scrolling container
+ * such as the Modal body does not clip it.
+ * The trigger is a button: Tab reaches it, Enter/Space/↓/↑ open the list, and
+ * choosing, Esc or Tab closes it and returns focus to the trigger.
+ * @param props.ariaLabel - the field's label; the trigger is announced as
+ *   "<label>: <selected value>"
  */
 export function SearchableSelect({
   value,
@@ -17,6 +50,7 @@ export function SearchableSelect({
   placeholder = "Search…",
   mono = true,
   maxHeight = 280,
+  ariaLabel,
 }: {
   value: string;
   onChange?: (v: string) => void;
@@ -24,12 +58,38 @@ export function SearchableSelect({
   placeholder?: string;
   mono?: boolean;
   maxHeight?: number;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [hi, setHi] = React.useState(0);
+  const [place, setPlace] = React.useState<Placement | null>(null);
   const ref = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Show the list in the top layer and keep it on the trigger while the page or
+  // a scrolling ancestor moves. jsdom has no popover API: the list stays inline.
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const update = () => {
+      const trigger = triggerRef.current;
+      if (trigger) setPlace(placeList(trigger.getBoundingClientRect(), maxHeight + CHROME_HEIGHT));
+    };
+    update();
+    const shown = typeof list?.showPopover === "function";
+    if (shown) list.showPopover();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      // A list already unmounted (closing) left the top layer with its node.
+      if (shown && list.isConnected) list.hidePopover();
+    };
+  }, [open, maxHeight]);
 
   React.useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -55,10 +115,24 @@ export function SearchableSelect({
 
   const current = options.find((o) => optValue(o) === value);
   const currentLabel = current ? optLabel(current) : value || placeholder;
+  /** The selected value stays in the accessible name: aria-label replaces the button's text. */
+  const valueText = current ? optLabel(current) : value;
+  const triggerName = ariaLabel && valueText ? `${ariaLabel}: ${valueText}` : ariaLabel;
 
+  /** Close the list and give focus back to the trigger (keyboard users stay in place). */
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
   const pick = (o: SelectOption) => {
     onChange?.(optValue(o));
-    setOpen(false);
+    close();
+  };
+  const onTriggerKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      setOpen(true);
+    }
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -71,24 +145,33 @@ export function SearchableSelect({
       e.preventDefault();
       const o = filtered[hi];
       if (o) pick(o);
-    } else if (e.key === "Escape") {
+    } else if (e.key === "Escape" || e.key === "Tab") {
       e.preventDefault();
-      setOpen(false);
+      close();
     }
   };
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={open}
+        aria-label={triggerName}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onTriggerKey}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 10,
+          width: "100%",
           padding: "10px 12px",
           borderRadius: 7,
           border: "1px solid var(--border-strong)",
           background: "var(--bg-elevated)",
+          color: "inherit",
+          font: "inherit",
+          textAlign: "left",
           cursor: "pointer",
         }}
       >
@@ -106,14 +189,18 @@ export function SearchableSelect({
           {currentLabel}
         </span>
         <Icon.ChevronsUpDown size={14} style={{ color: "var(--text-muted)" }} />
-      </div>
+      </button>
       {open && (
         <div
+          ref={listRef}
+          popover="manual"
           style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            right: 0,
+            position: "fixed",
+            inset: "auto",
+            margin: 0,
+            padding: 0,
+            ...place,
+            color: "inherit",
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-strong)",
             borderRadius: 9,

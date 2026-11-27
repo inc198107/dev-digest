@@ -20,6 +20,8 @@
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
+- 2026-11-27 · `src/adapters/depgraph/index.ts` `buildEdges` · When ranks look flat, check `repo_index_state.stats.edgesWritten`; give cruise walkClone's files as plain paths relative to a forward-slash `baseDir`, never as globs or `'.'` — absolute `D:\…` paths were read as globs on Windows (ENOENT on a mangled path, swallowed: 0 edges for every repo), cruising `'.'` follows symlinks and ignores walkClone's bounds, and a glob-named path (`app/[id]/page.tsx`, even escaped as `[[]id[]]`) is expanded by a recursive readdir of its prefix that follows links and runs once per file. Glob-named files are left out (`isGlobPath`) and reached only through imports: dev-digest 0 → 380 edges (514 with them). Tests `depgraph.test.ts` (loop junctions under `src/` and the glob prefix `app/`). (replaces 2026-11-27 entries that recommended `'.'` and then literal globs: security re-review findings, both reproduced in this session)
+- 2026-11-27 · `src/adapters/depgraph/index.ts` cruise options · Keep `moduleSystems: ['es6', 'cjs', 'tsd']` (no `amd`) — dependency-cruiser resolves a non-relative AMD name (`define(['x'])`) by a lexical join without realpath, so a symlink in the clone leads out of it; `depgraph.test.ts` asserts a `define(['./b'])` file yields no edge (it did before the option).
 
 ## Session Notes
 <!-- Dated session summaries: what was done, what was learned. -->

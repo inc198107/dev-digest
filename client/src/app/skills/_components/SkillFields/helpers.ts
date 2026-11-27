@@ -1,4 +1,5 @@
 import type { Skill, SkillType } from "@devdigest/shared";
+import { isSkillName } from "@/lib/skill-block";
 
 /** Editable fields of a skill form. */
 export interface SkillFormValue {
@@ -10,9 +11,6 @@ export interface SkillFormValue {
 
 /** Empty form for a new skill. */
 export const EMPTY_SKILL_FORM: SkillFormValue = { name: "", description: "", type: "rubric", body: "" };
-
-/** Kebab-case, as the API's `SkillName` requires. */
-const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
  * @param skill A stored skill or an import preview.
@@ -29,7 +27,7 @@ export function toFormValue(skill: Pick<Skill, "name" | "description" | "type" |
  */
 export function isFormComplete(value: SkillFormValue): boolean {
   return (
-    SKILL_NAME_PATTERN.test(value.name.trim()) &&
+    isSkillName(value.name) &&
     value.description.trim().length > 0 &&
     value.body.trim().length > 0
   );

@@ -7,12 +7,14 @@ import { Badge, ErrorState, Icon, Skeleton, Tabs } from "@devdigest/ui";
 import type { SkillListItem } from "@devdigest/shared";
 import { AppShell } from "../../../../../components/app-shell";
 import { SkillTypeBadge, SkillTypeIcon } from "../../../../../components/skill-meta";
-import { useSkill, useSkills, useUpdateSkill } from "../../../../../lib/hooks/skills";
+import { useSkill, useSkills, useSkillStatsSummary, useUpdateSkill } from "../../../../../lib/hooks/skills";
 import { AddSkillMenu, SkillDialogs, type AddSkillMode } from "../../../_components/AddSkill";
 import { SkillCard } from "../../../_components/SkillCard";
 import { filterSkills } from "../../../_lib/filter-skills";
+import { indexStatsBySkill } from "../../../_lib/skill-stats";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
+import { StatsTab } from "./_components/StatsTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { SKILL_TABS, type SkillTabKey } from "./constants";
 import { parseSkillTab } from "./helpers";
@@ -30,6 +32,7 @@ export function SkillEditorView({ id }: { id: string }) {
   const search = useSearchParams();
   const { data: skills } = useSkills();
   const { data: skill, isLoading, isError, refetch } = useSkill(id);
+  const { data: statsSummary } = useSkillStatsSummary();
   const update = useUpdateSkill();
   const [filter, setFilter] = React.useState("");
   const [dialog, setDialog] = React.useState<AddSkillMode | null>(null);
@@ -37,6 +40,8 @@ export function SkillEditorView({ id }: { id: string }) {
   const tab = parseSkillTab(search.get("tab"));
   const setTab = (next: string) => router.replace(`/skills/${id}?tab=${next}`);
   const tabs = SKILL_TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
+  const statsById = indexStatsBySkill(statsSummary);
+  const listed = filterSkills(skills ?? [], filter);
   const crumb = [
     { label: t("page.crumbLab") },
     { label: t("page.crumbSkills"), href: "/skills" },
@@ -73,10 +78,14 @@ export function SkillEditorView({ id }: { id: string }) {
             </div>
           </div>
           <div style={s.listBody}>
-            {filterSkills(skills ?? [], filter).map((sk) => (
+            {skills && skills.length > 0 && listed.length === 0 && (
+              <div style={s.noMatch}>{t("page.noMatch", { q: filter })}</div>
+            )}
+            {listed.map((sk) => (
               <SkillCard
                 key={sk.id}
                 skill={sk}
+                stats={statsById.get(sk.id)}
                 active={sk.id === id}
                 onClick={() => router.push(`/skills/${sk.id}?tab=${tab}`)}
                 onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
@@ -118,7 +127,7 @@ export function SkillEditorView({ id }: { id: string }) {
 
 /**
  * The content of the selected tab. Config stays mounted (hidden) while another tab is shown, so
- * an unsaved draft survives a look at Preview or Versions; it is keyed by skill id, so opening
+ * an unsaved draft survives a look at another tab; it is keyed by skill id, so opening
  * another skill starts a fresh form.
  * @param props.tab Selected tab.
  * @param props.skill The skill being edited.
@@ -131,6 +140,7 @@ function EditorTab({ tab, skill }: { tab: SkillTabKey; skill: SkillListItem }) {
         <ConfigTab key={skill.id} skill={skill} />
       </div>
       {tab === "preview" && <PreviewTab skill={skill} />}
+      {tab === "stats" && <StatsTab skill={skill} />}
       {tab === "versions" && <VersionsTab skill={skill} />}
     </>
   );

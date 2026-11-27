@@ -1,10 +1,13 @@
 import type {
+  CommunitySkillSearchResult,
   Skill,
   SkillBlock,
   SkillCreateBody,
   SkillIgnoredFile,
   SkillImportPreview,
   SkillListItem,
+  SkillStats,
+  SkillStatsSummary,
   SkillUpdateBody,
   SkillVersion,
 } from '@devdigest/shared';
@@ -15,9 +18,11 @@ import {
   MAX_ARCHIVE_ENTRIES,
   MAX_ARCHIVE_UNPACKED_BYTES,
   MAX_SKILL_CORE_BYTES,
+  SKILL_STATS_WINDOW_DAYS,
 } from './constants.js';
 import {
   baseName,
+  cleanVersionNote,
   decodeSkillText,
   draftBodyProblem,
   draftFromMarkdown,
@@ -28,13 +33,21 @@ import {
   hiddenOnlyProblem,
   normalizeSkillUrl,
   planSkillVersion,
+  restoreNote,
   selectSkillCore,
   type SkillDraft,
+  mergeSkillUsage,
+  toSkillStats,
+  toSkillStatsSummary,
   withoutHiddenCharacters,
 } from './domain.js';
 import type {
   AgentSkillsReader,
   ArchiveReader,
+  CommunitySkillSearch,
+  SkillPatch,
+  SkillRunUsageReader,
+  SkillStatsReader,
   SkillsStore,
   SkillsUnitOfWork,
   TextFetcher,
@@ -125,19 +138,22 @@ export class SkillsService {
 
   /**
    * Update a skill. Changing what the model sees (name, description, body) bumps the version
-   * and snapshots the body; `type` and `enabled` keep it. The row stays locked from the read
-   * to the commit, so concurrent edits get consecutive versions.
+   * and snapshots the body; `type` and `enabled` keep it. The patch's `note` is stored with
+   * that snapshot only: it is dropped when the update creates no version, and it never reaches
+   * the skill row or the prompt. The row stays locked from the read to the commit, so
+   * concurrent edits get consecutive versions.
    * @param workspaceId Tenant scope.
    * @param id Skill id.
-   * @param patch Fields to change.
+   * @param patch Fields to change, optionally with a "what changed" note.
    * @returns The updated skill, or undefined (route → 404).
    * @throws ConflictError when the new name is taken in the workspace.
    */
   update(workspaceId: string, id: string, patch: SkillUpdateBody): Promise<Skill | undefined> {
-    const visible = withoutHiddenCharacters(patch);
-    const problem = hiddenOnlyProblem(visible);
+    const { note, ...fields } = withoutHiddenCharacters(patch);
+    const problem = hiddenOnlyProblem(fields);
     if (problem) return Promise.reject(new ValidationError(problem));
-    return this.deps.uow.run((store) => this.applyUpdate(store, workspaceId, id, visible));
+    const versionNote = cleanVersionNote(note);
+    return this.deps.uow.run((store) => this.applyUpdate(store, workspaceId, id, fields, versionNote));
   }
 
   /**
@@ -161,8 +177,9 @@ export class SkillsService {
   }
 
   /**
-   * Make an old snapshot's body current again. The restored body becomes a new version, so
-   * history is never rewritten; restoring the current body changes nothing.
+   * Make an old snapshot's body current again. The restored body becomes a new version noted
+   * `Restored from v<N>`, so history is never rewritten; restoring the current body changes
+   * nothing.
    * @param workspaceId Tenant scope.
    * @param id Skill id.
    * @param version Snapshot to restore.
@@ -174,7 +191,7 @@ export class SkillsService {
       if (!(await store.getForUpdate(workspaceId, id))) return undefined;
       const snapshot = await store.getVersion(id, version);
       if (!snapshot) throw new NotFoundError('Skill version not found');
-      return this.applyUpdate(store, workspaceId, id, { body: snapshot.body });
+      return this.applyUpdate(store, workspaceId, id, { body: snapshot.body }, restoreNote(version));
     });
   }
 
@@ -213,20 +230,22 @@ export class SkillsService {
    * @param workspaceId Tenant scope.
    * @param id Skill id.
    * @param patch Fields to change.
+   * @param note Note of the version the update creates; unused when it creates none.
    * @returns The updated skill, or undefined when it is not in this workspace.
    */
   private async applyUpdate(
     store: SkillsStore,
     workspaceId: string,
     id: string,
-    patch: SkillUpdateBody,
+    patch: SkillPatch,
+    note: string | null,
   ): Promise<Skill | undefined> {
     const existing = await store.getForUpdate(workspaceId, id);
     if (!existing) return undefined;
     const plan = planSkillVersion(existing, patch);
     if (!plan.bump) return store.update(workspaceId, id, patch);
     const updated = await store.update(workspaceId, id, patch, plan.version);
-    if (updated) await store.snapshotVersion(id, plan.version, updated.body);
+    if (updated) await store.snapshotVersion(id, plan.version, updated.body, note);
     return updated;
   }
 
@@ -352,5 +371,75 @@ export class SkillPromptBlocks implements SkillsForAgent {
         text,
       };
     });
+  }
+}
+
+/** What the stats use cases need: the skills side (links) and the review runs' side. */
+export interface SkillStatsServiceDeps {
+  stats: SkillStatsReader;
+  runs: SkillRunUsageReader;
+}
+
+/**
+ * Skills Lab stats (last 30 days): how often each skill was in a finished review's prompt and
+ * how the findings of those runs were judged. The reader counts; the rates are domain rules.
+ */
+export class SkillStatsService {
+  /**
+   * @param deps Ports this use case depends on.
+   */
+  constructor(private readonly deps: SkillStatsServiceDeps) {}
+
+  /**
+   * @param workspaceId Tenant scope.
+   * @returns The card numbers of every skill of the workspace, by skill name (one read).
+   */
+  async summary(workspaceId: string): Promise<SkillStatsSummary[]> {
+    const links = await this.deps.stats.linkCounts(workspaceId);
+    const usage = await this.deps.runs.runUsage(
+      workspaceId,
+      links.map((link) => link.skillId),
+      SKILL_STATS_WINDOW_DAYS,
+    );
+    return mergeSkillUsage(links, usage.skills).map((counts) => toSkillStatsSummary(counts, usage.runs));
+  }
+
+  /**
+   * @param workspaceId Tenant scope.
+   * @param id Skill id.
+   * @returns The stats of the skill, or undefined when it is not in this workspace (route → 404).
+   */
+  async forSkill(workspaceId: string, id: string): Promise<SkillStats | undefined> {
+    const [link] = await this.deps.stats.linkCounts(workspaceId, id);
+    if (!link) return undefined;
+    const [usage, categories] = await Promise.all([
+      this.deps.runs.runUsage(workspaceId, [id], SKILL_STATS_WINDOW_DAYS),
+      this.deps.runs.findingsByCategory(workspaceId, id, SKILL_STATS_WINDOW_DAYS),
+    ]);
+    const [counts] = mergeSkillUsage([link], usage.skills);
+    return toSkillStats(counts!, usage.runs, categories);
+  }
+}
+
+/** What the community search use case needs. */
+export interface CommunitySkillsServiceDeps {
+  search: CommunitySkillSearch;
+}
+
+/** Search public GitHub repositories for community skills (`SKILL.md` files). */
+export class CommunitySkillsService {
+  /**
+   * @param deps Ports this use case depends on.
+   */
+  constructor(private readonly deps: CommunitySkillsServiceDeps) {}
+
+  /**
+   * @param query Search text as typed; whitespace runs are collapsed, so equal searches share
+   *   the adapter cache.
+   * @returns The hits, or `{ configured: false, items: [] }` without a GitHub token.
+   * @throws ExternalServiceError when GitHub fails, refuses or does not answer in time.
+   */
+  search(query: string): Promise<CommunitySkillSearchResult> {
+    return this.deps.search.search(query.replace(/\s+/g, ' ').trim());
   }
 }

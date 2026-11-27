@@ -28,7 +28,7 @@ flowchart TD
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
   AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
-  SKILLS["/skills<br/>skill cards (usage line) · side preview<br/>create · import file/URL · community search"] --> SKILL["/skills/:id<br/>editor (config · preview · stats · versions + diff)"]
+  SKILLS["/skills<br/>opens the first skill · empty state<br/>create · import file/URL · community search"] -->|"redirect"| SKILL["/skills/:id<br/>skill list + editor (preview · config · stats · versions + diff)"]
   CONV["/repos/:repoId/conventions<br/>scan · accept · reword · reject<br/>create skill from accepted"] -->|"POST /skills (extracted)"| SKILL
   SETTINGS["/settings/:section<br/>API keys · models"]
 

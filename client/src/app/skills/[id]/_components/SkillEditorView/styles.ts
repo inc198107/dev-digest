@@ -33,6 +33,7 @@ export const s = {
     outline: "none",
     color: "var(--text-primary)",
   } satisfies CSSProperties,
+  noMatch: { fontSize: 12.5, color: "var(--text-muted)", padding: "12px 4px" } satisfies CSSProperties,
   listBody: { flex: 1, overflow: "auto", padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
   main: { flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 } satisfies CSSProperties,
   header: { display: "flex", alignItems: "center", gap: 10, padding: "16px 28px 0", flexShrink: 0 } satisfies CSSProperties,

@@ -41,6 +41,7 @@ export function SkillEditorView({ id }: { id: string }) {
   const setTab = (next: string) => router.replace(`/skills/${id}?tab=${next}`);
   const tabs = SKILL_TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
   const statsById = indexStatsBySkill(statsSummary);
+  const listed = filterSkills(skills ?? [], filter);
   const crumb = [
     { label: t("page.crumbLab") },
     { label: t("page.crumbSkills"), href: "/skills" },
@@ -77,7 +78,10 @@ export function SkillEditorView({ id }: { id: string }) {
             </div>
           </div>
           <div style={s.listBody}>
-            {filterSkills(skills ?? [], filter).map((sk) => (
+            {skills && skills.length > 0 && listed.length === 0 && (
+              <div style={s.noMatch}>{t("page.noMatch", { q: filter })}</div>
+            )}
+            {listed.map((sk) => (
               <SkillCard
                 key={sk.id}
                 skill={sk}

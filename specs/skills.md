@@ -131,6 +131,11 @@ editor that mirrors the Agent editor), "Agent Editor · Skills", "Run Trace · P
 
 ## Lab finish (L02)
 Plan: `L02-skills-lab-finish-plan.md` (outside the repo). Evals stay out of scope.
+- **Navigation as in the design and the reference video.** There is no separate list page:
+  `/skills` (the Skills menu item) opens the editor of the first skill (`/skills/<id>`), with the
+  skill list on the left and Preview · Config · Stats · Versions on the right; Preview is the
+  first and default tab. A workspace without skills gets an empty state with Add skill. The card
+  grid and its side preview drawer are gone. Create and import still land on Config.
 - **Body editor.** `src/components/skill-body-editor/` (promoted from the conventions modal): file
   header `<name>.md`, an "unsaved" badge, token estimate, line numbers. Used by SkillFields
   (create, import preview, Config) and the conventions modal.

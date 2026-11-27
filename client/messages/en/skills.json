@@ -57,15 +57,6 @@
   "bodyEditor": {
     "unsaved": "unsaved"
   },
-  "drawer": {
-    "subtitle": "{type} · {source} · v{version}",
-    "usedBy": "Used by",
-    "notUsed": "Not linked to any agent yet.",
-    "asReceived": "As the agent receives it",
-    "disabledNote": "Disabled: no agent receives this skill.",
-    "edit": "Edit skill",
-    "close": "Close"
-  },
   "editor": {
     "listTitle": "Skills",
     "loadError": "Could not load this skill.",

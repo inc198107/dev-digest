@@ -66,10 +66,14 @@ Files outside the skill that belong to it:
 
 - **Install once per clone:** `node .claude/skills/pr-self-review/scripts/install-hooks.mjs`.
   It refuses to replace another `core.hooksPath` and prints the line to add there instead.
-- **Manual:** `/pr-self-review` (optionally `--base <ref>`, `--incremental` after fixes).
-- **Automatic:** the gate blocks `gh pr create` / `gh pr merge` / `git push` without a fresh
-  PASS and tells Claude to run the skill; the description also triggers on "review my changes
-  before the PR".
+- **Manual only:** `/pr-self-review` (optionally `--base <ref>`, `--incremental` after fixes).
+- **Re-review after fixes:** always `--incremental`. Only lanes whose files changed since the last
+  verdict get a subagent; the rest are listed under `incremental.skipped` with their carried
+  findings and are not re-run. Reviewers run at most 5 at a time.
+  `disable-model-invocation: true` keeps Claude from loading the skill on its own: the user
+  types the command.
+- **Gate:** the hooks block `gh pr create` / `gh pr merge` / `git push` without a fresh PASS
+  and tell Claude to ask the user to run `/pr-self-review`.
 - **Waive:** only on the user's explicit request, through `waivers.json` in the run folder
   (SKILL.md §6). The user can always bypass the push gate with `git push --no-verify`.
 - **New skill:** add it to `routing.json` (`lanes` or `ignore`). A skill with `paths`

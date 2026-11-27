@@ -7,7 +7,10 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { TEST_QUALITY_SKILLS } from './seed-skills.js';
+import { REFUND_PR, REFUND_PR_FILES } from './seed-refund-pr.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -19,15 +22,24 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
+ * with a few findings, the three built-in agents (General + Security +
  * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
  *
- * Later milestones populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * Skills Lab: the Test Quality Reviewer agent with its three built-in skills
+ * (./seed-skills.ts, each with a v1 body snapshot, linked in order) and fixture
+ * PR #483 (./seed-refund-pr.ts), whose happy-path-only test drives the control
+ * experiment. Skills are linked only when the agent is first created, so a re-seed
+ * never undoes the user's links or order.
+ *
+ * Later milestones populate the other tables (conventions, memory, eval, …) once
+ * their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
 export const SYSTEM_USER_EMAIL = 'you@local';
+
+/** Name of the seeded agent that the Skills Lab demo links its skills to. */
+export const TEST_QUALITY_REVIEWER = 'Test Quality Reviewer';
 
 export async function seed(db: Db): Promise<{ workspaceId: string; userId: string }> {
   // ---- workspace + user (no-auth defaults) ----
@@ -176,7 +188,45 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     ]);
   }
 
-  // ---- built-in agents (the three starter presets) ----
+  /**
+   * PR #483 (partial refunds): the Skills Lab control experiment. One transaction, so an
+   * interrupted seed never leaves the PR without its files (a re-seed skips an existing PR).
+   */
+  await db.transaction(async (tx) => {
+    const [refundPr] = await tx
+      .select()
+      .from(t.pullRequests)
+      .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, REFUND_PR.number)));
+    if (!refundPr) {
+      const [created] = await tx
+        .insert(t.pullRequests)
+        .values({
+          workspaceId,
+          repoId,
+          number: REFUND_PR.number,
+          title: REFUND_PR.title,
+          author: REFUND_PR.author,
+          branch: REFUND_PR.branch,
+          base: REFUND_PR.base,
+          headSha: REFUND_PR.headSha,
+          additions: REFUND_PR_FILES.reduce((sum, f) => sum + f.additions, 0),
+          deletions: 0,
+          filesCount: REFUND_PR_FILES.length,
+          status: 'needs_review',
+          body: REFUND_PR.body,
+        })
+        .returning();
+      await tx.insert(t.prFiles).values(REFUND_PR_FILES.map((f) => ({ prId: created!.id, ...f })));
+      await tx.insert(t.prCommits).values({
+        prId: created!.id,
+        sha: REFUND_PR.headSha,
+        message: REFUND_PR.commitMessage,
+        author: REFUND_PR.author,
+      });
+    }
+  });
+
+  /** Built-in agents: the three starter presets and the Test Quality Reviewer. */
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
   const seedAgents: Array<typeof t.agents.$inferInsert> = [
     {
@@ -212,14 +262,61 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: TEST_QUALITY_REVIEWER,
+      description: 'Checks test quality: untested branches, missed corner cases, over-mocking and flaky tests.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
-  for (const a of seedAgents) {
-    const [existing] = await db
-      .select()
-      .from(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
-    if (!existing) await db.insert(t.agents).values(a);
-  }
+  /**
+   * Agents, Skills Lab skills (+ v1 snapshots) and the Test Quality Reviewer's links in one
+   * transaction: links are created only together with the agent, so a half-done run would never
+   * be repaired by a re-seed.
+   */
+  await db.transaction(async (tx) => {
+    const createdAgents = new Map<string, string>();
+    for (const a of seedAgents) {
+      const [existing] = await tx
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
+      if (!existing) {
+        const [inserted] = await tx.insert(t.agents).values(a).returning({ id: t.agents.id });
+        createdAgents.set(a.name, inserted!.id);
+      }
+    }
+
+    const skillIds: string[] = [];
+    for (const skill of TEST_QUALITY_SKILLS) {
+      const [existing] = await tx
+        .select({ id: t.skills.id })
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, skill.name)));
+      if (existing) {
+        skillIds.push(existing.id);
+        continue;
+      }
+      const [inserted] = await tx
+        .insert(t.skills)
+        .values({ workspaceId, ...skill, source: 'manual', enabled: true, version: 1 })
+        .returning({ id: t.skills.id });
+      await tx.insert(t.skillVersions).values({ skillId: inserted!.id, version: 1, body: skill.body });
+      skillIds.push(inserted!.id);
+    }
+    const testQualityAgentId = createdAgents.get(TEST_QUALITY_REVIEWER);
+    if (testQualityAgentId) {
+      await tx
+        .insert(t.agentSkills)
+        .values(skillIds.map((skillId, order) => ({ agentId: testQualityAgentId, skillId, order })))
+        .onConflictDoNothing();
+    }
+  });
 
   return { workspaceId, userId };
 }

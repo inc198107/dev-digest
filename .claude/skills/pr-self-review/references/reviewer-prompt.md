@@ -1,7 +1,7 @@
 # Reviewer subagent prompt
 
 Fill the `{{…}}` placeholders from the lane in `plan.json` and send the text as the prompt of a
-`general-purpose` subagent. One subagent per lane; start all lanes in one message.
+`general-purpose` subagent. One subagent per lane, at most 5 running at a time (SKILL.md §2).
 
 - `{{LANE_ID}}`, `{{SKILL}}`, `{{SKILL_FILE}}`: from the lane.
 - `{{BASE_SHA}}`: `plan.base.sha`.

@@ -168,6 +168,20 @@ test('incremental re-review carries findings of unchanged files and reviews only
   assert.equal(prePush().status, 0, 'carried critical stays waived');
 });
 
+test('incremental re-review skips lanes whose files did not change', () => {
+  write('.claude/skills/onion-architecture/SKILL.md', '---\nname: onion-architecture\ndescription: Server rings.\n---\n');
+  write('client/src/view.tsx', 'export const View = () => null;\n');
+  assert.equal(review([]).status, 0);
+  write('client/src/view.tsx', 'export const View = () => 1;\n');
+  const rec = review([], ['--incremental']);
+  const skipped = rec.plan.incremental.skipped;
+  const planned = rec.plan.lanes.map((/** @type {any} */ l) => l.skill);
+  const reviewed = rec.plan.lanes.flatMap((/** @type {any} */ l) => l.files.map((/** @type {any} */ f) => f.path));
+  assert.deepEqual([...new Set(reviewed)], ['client/src/view.tsx']);
+  assert.ok(skipped.some((/** @type {any} */ s) => s.skill === 'onion-architecture' && s.carried === 0), JSON.stringify(skipped));
+  for (const s of skipped) assert.ok(!planned.includes(s.skill), `${s.skill} is both skipped and planned`);
+});
+
 test('record refuses findings without the required fields and edits made during the review', () => {
   const planned = JSON.parse(run('plan.mjs').stdout);
   run('run-checks.mjs', [planned.runDir]);

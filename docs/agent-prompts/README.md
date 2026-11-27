@@ -9,6 +9,7 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md) — leans on its linked skills
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
@@ -49,6 +50,39 @@ delimiter-wrapped (`prompt.ts:104-122`):
 Sections with no content are omitted. Everything repo- or author-derived is wrapped
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions
 (system) from data (user).
+
+### Skills in the prompt
+
+`## Skills / rules` holds one block per skill that is **linked to the agent and
+enabled**, in the order set in the Agent editor's Skills tab (drag and drop):
+
+```
+### Skill: <name>
+> <description: one directive sentence>
+
+<body>
+```
+
+- The **description is the skill's interface**: the model reads it first to see what
+  the block is for, so write it as a directive ("Flag every branch … that no test
+  exercises."). The body is the checklist the model follows.
+- A skill is **text only**. It cannot call tools or run scripts; imported packages are
+  reduced to their `SKILL.md` core and nothing else from them is read or run.
+- Skills sit in the **user** message, not the system message, and are not wrapped as
+  untrusted: they are instructions the workspace chose. An **imported** skill is
+  therefore someone else's instructions inside your agent's prompt — the import shows
+  a trust warning and the full text, and saves only after you confirm. Read it like a
+  dependency. Invisible characters (zero-width, bidi, variation selectors, tag characters,
+  control characters) are stripped from every skill before it is stored, so they cannot hide
+  instructions the preview does not show. The output is still bound by the JSON Schema and
+  the grounding gate.
+- Changing a skill's name, description or body creates a new skill version; the run
+  trace records which version of each skill a run used and how many tokens it added
+  (`prompt_assembly.skill_blocks`).
+- Write an agent prompt that **delegates checklists to skills** (see
+  `test-quality-reviewer.md`): the system prompt sets role, severity and verdict; the
+  skills say what to look for. Then a skill can be shared across agents and toggled
+  without touching the prompt.
 
 ## The output schema is NOT in the prompt
 

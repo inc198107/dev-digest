@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SkillType } from './knowledge.js';
 
 /**
  * Run trace. The ENTIRE trace of one run is persisted as a SINGLE
@@ -36,9 +37,26 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCall>;
 
+/**
+ * One skill as it entered a run's prompt: the formatted block (name, description, body) and
+ * the tokens it added. Listed in link order.
+ */
+export const SkillBlock = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: SkillType,
+  version: z.number().int(),
+  tokens: z.number().int(),
+  text: z.string(),
+});
+export type SkillBlock = z.infer<typeof SkillBlock>;
+
 export const PromptAssembly = z.object({
   system: z.string(),
+  /** All skill blocks joined, as sent under `## Skills / rules`; null when none. */
   skills: z.string().nullish(),
+  /** Each enabled linked skill with its token count; nullish: older traces lack it. */
+  skill_blocks: z.array(SkillBlock).nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
   /** Callers-of-changed-symbols digest (T1.3); null when absent. */

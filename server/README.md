@@ -71,8 +71,9 @@ flowchart TB
   subgraph Review["Review & runs"]
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
-  subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id"]
+  subgraph Agents["Agents & Skills Lab"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
+    skills["skills<br/>/skills · /skills/:id · /skills/:id/versions(/:version/restore)<br/>/skills/import/(file|url) (preview only)"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -106,7 +107,8 @@ through `SecretsProvider` (`~/.devdigest/secrets.json`, mode `0600`, with
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data
-(`acme/payments-api`, PR #482, the two built-in agents).
+(`acme/payments-api`, PR #482 and fixture PR #483, the four built-in agents, and the
+three Test Quality Reviewer skills linked to it).
 
 ## Review context (non-obvious)
 
@@ -128,6 +130,16 @@ What the reviewer actually sends to the model is assembled in
   demo / test / not for production / do not flag" never descope the review — real
   defects are reported at full severity regardless. We deliberately do **not**
   keyword-scan untrusted text (a denylist only catches one phrasing).
+- **Skills are text appended to the user message.** `run-executor` asks the skills
+  facade (`container.skillsForAgent`) for the agent's linked skills that are
+  `enabled`, in link order; each becomes one block (`### Skill: <name>`, the
+  description as a quote line, the body) passed to reviewer-core as `skills`, which
+  puts them under `## Skills / rules` — never in the system message. The run's trace
+  records every block with its tiktoken count (`prompt_assembly.skill_blocks`) and the
+  live log gets one `Skill loaded: …` line per skill. Imports (`/skills/import/*`)
+  only preview: the zip reader unpacks the `SKILL.md` core in memory under a byte cap,
+  lists every other entry (scripts as `executable`) and never writes or runs one; the
+  URL fetcher is https-only with an SSRF guard at connect time. See `../specs/skills.md`.
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.

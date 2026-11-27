@@ -13,11 +13,14 @@ import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
+import { SkillBlocksGroup } from "../SkillBlocksGroup";
 import { Row, Stat } from "../atoms";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
+  /** Per-skill blocks (Skills Lab); traces written before skills existed have none. */
+  const skillBlocks = trace.prompt_assembly.skill_blocks ?? [];
   return (
     <>
       <TraceSection icon="Settings" title={t("trace.configuration")}>
@@ -31,6 +34,19 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
             <span className="mono" style={s.configProvider}>
               {trace.config.provider ?? "—"}
             </span>
+          </Row>
+          <Row label={t("trace.config.skillsLoaded")}>
+            <div style={s.specsWrap}>
+              {skillBlocks.length === 0 ? (
+                <span style={s.specsNone}>{t("trace.config.none")}</span>
+              ) : (
+                skillBlocks.map((b) => (
+                  <Badge key={b.id} color="var(--text-secondary)" mono>
+                    {b.name} v{b.version}
+                  </Badge>
+                ))
+              )}
+            </div>
           </Row>
           <Row label={t("trace.config.memoryPulled")}>
             <span>{t("trace.config.items", { count: trace.memory_pulled.length })}</span>
@@ -72,8 +88,12 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
 
       <TraceSection icon="FileText" title={t("trace.promptAssembly")} defaultOpen={false}>
         <PromptBlock label={t("trace.prompt.system")} text={trace.prompt_assembly.system} color={PROMPT_COLORS.system} />
-        {trace.prompt_assembly.skills != null && (
-          <PromptBlock label={t("trace.prompt.skills")} text={trace.prompt_assembly.skills} color={PROMPT_COLORS.skills} />
+        {skillBlocks.length > 0 ? (
+          <SkillBlocksGroup blocks={skillBlocks} />
+        ) : (
+          trace.prompt_assembly.skills != null && (
+            <PromptBlock label={t("trace.prompt.skills")} text={trace.prompt_assembly.skills} color={PROMPT_COLORS.skills} />
+          )
         )}
         {trace.prompt_assembly.memory != null && (
           <PromptBlock label={t("trace.prompt.memory")} text={trace.prompt_assembly.memory} color={PROMPT_COLORS.memory} />

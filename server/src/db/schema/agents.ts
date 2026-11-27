@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, boolean, jsonb, primaryKey, index } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces, users } from './core';
 import { skills } from './skills';
@@ -59,5 +59,12 @@ export const agentSkills = pgTable(
       .references(() => skills.id, { onDelete: 'cascade' }),
     order: integer('order').notNull().default(0),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.agentId, t.skillId] }) }),
+  /**
+   * skill_id index: "used by" lookups and the ON DELETE CASCADE from skills (the PK leads with
+   * agent_id, so it does not serve them).
+   */
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.skillId] }),
+    skillIdx: index('agent_skills_skill_id_idx').on(t.skillId),
+  }),
 );

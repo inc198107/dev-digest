@@ -12,20 +12,32 @@ import { s } from "./styles";
 /**
  * /skills — the Skills Lab entry. There is no separate list page: the skill editor already shows
  * the list on the left, so this route opens the first skill (`/skills/<id>`, on its default tab).
- * While the list loads it shows the editor's outline; a workspace without skills gets an empty
- * state with "Add skill".
+ * The choice is made once, from a fresh list (not while a refetch runs, so a skill deleted a
+ * moment ago is never the target), and never again: a skill created or imported from the empty
+ * state navigates through its own dialog. Until then the editor's outline is shown; a workspace
+ * without skills gets an empty state with "Add skill".
  * @returns The page body inside the app shell.
  */
 export function SkillsIndexView() {
   const t = useTranslations("skills");
   const router = useRouter();
-  const { data: skills, isLoading, isError, refetch } = useSkills();
+  const { data: skills, isError, isFetching, refetch } = useSkills();
   const [dialog, setDialog] = React.useState<AddSkillMode | null>(null);
-  const firstId = skills?.[0]?.id;
+  const [outcome, setOutcome] = React.useState<"pending" | "redirect" | "empty">("pending");
+  /** Guards the one-time decision against a Strict Mode re-run of the effect. */
+  const decided = React.useRef(false);
 
   React.useEffect(() => {
-    if (firstId) router.replace(`/skills/${firstId}`);
-  }, [firstId, router]);
+    if (decided.current || !skills || isFetching) return;
+    decided.current = true;
+    const first = skills[0];
+    if (first) {
+      setOutcome("redirect");
+      router.replace(`/skills/${first.id}`);
+    } else {
+      setOutcome("empty");
+    }
+  }, [skills, isFetching, router]);
 
   const crumb = [{ label: t("page.crumbLab") }, { label: t("page.crumbSkills") }];
 
@@ -37,7 +49,7 @@ export function SkillsIndexView() {
     );
   }
 
-  if (isLoading || firstId) {
+  if (outcome !== "empty") {
     return (
       <AppShell crumb={crumb}>
         <div style={s.layout} aria-busy="true">

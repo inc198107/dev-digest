@@ -8,7 +8,7 @@ import { ToastProvider } from "../../../../lib/toast";
 
 const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
-  skills: { data: undefined as SkillListItem[] | undefined, isLoading: false, isError: false },
+  skills: { data: undefined as SkillListItem[] | undefined, isLoading: false, isError: false, isFetching: false },
 }));
 
 const SKILLS: SkillListItem[] = [
@@ -57,7 +57,7 @@ import { SkillsIndexView } from "./SkillsIndexView";
 
 beforeEach(() => {
   mocks.replace.mockReset();
-  mocks.skills = { data: undefined, isLoading: false, isError: false };
+  mocks.skills = { data: undefined, isLoading: false, isError: false, isFetching: false };
 });
 afterEach(cleanup);
 
@@ -76,21 +76,53 @@ function renderView() {
 
 describe("/skills entry", () => {
   it("opens the first skill in the editor (no separate list page)", () => {
-    mocks.skills = { data: SKILLS, isLoading: false, isError: false };
+    mocks.skills = { data: SKILLS, isLoading: false, isError: false, isFetching: false };
     renderView();
     expect(mocks.replace).toHaveBeenCalledWith("/skills/s1");
     expect(screen.queryByText("No skills yet")).toBeNull();
   });
 
+  it("waits for a fresh list: a cached list being refetched (e.g. after a delete) is not the target", () => {
+    mocks.skills = { data: SKILLS, isLoading: false, isError: false, isFetching: true };
+    const view = renderView();
+    expect(mocks.replace).not.toHaveBeenCalled();
+    mocks.skills = { data: [SKILLS[1]!], isLoading: false, isError: false, isFetching: false };
+    view.rerender(
+      <NextIntlClientProvider locale="en" messages={{ skills: skillsMessages, shell: shellMessages }}>
+        <ToastProvider>
+          <SkillsIndexView />
+        </ToastProvider>
+      </NextIntlClientProvider>,
+    );
+    expect(mocks.replace).toHaveBeenCalledTimes(1);
+    expect(mocks.replace).toHaveBeenCalledWith("/skills/s2");
+  });
+
+  it("decides once: a skill created from the empty state does not trigger a redirect", () => {
+    mocks.skills = { data: [], isLoading: false, isError: false, isFetching: false };
+    const view = renderView();
+    expect(screen.getByText("No skills yet")).toBeInTheDocument();
+    mocks.skills = { data: SKILLS, isLoading: false, isError: false, isFetching: false };
+    view.rerender(
+      <NextIntlClientProvider locale="en" messages={{ skills: skillsMessages, shell: shellMessages }}>
+        <ToastProvider>
+          <SkillsIndexView />
+        </ToastProvider>
+      </NextIntlClientProvider>,
+    );
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(screen.getByText("No skills yet")).toBeInTheDocument();
+  });
+
   it("shows the editor outline while the skills load, without redirecting", () => {
-    mocks.skills = { data: undefined, isLoading: true, isError: false };
+    mocks.skills = { data: undefined, isLoading: true, isError: false, isFetching: true };
     const { container } = renderView();
     expect(container.querySelector("[aria-busy='true']")).not.toBeNull();
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
   it("a workspace without skills gets the empty state; its button opens the create dialog", () => {
-    mocks.skills = { data: [], isLoading: false, isError: false };
+    mocks.skills = { data: [], isLoading: false, isError: false, isFetching: false };
     renderView();
     expect(screen.getByText("No skills yet")).toBeInTheDocument();
     expect(mocks.replace).not.toHaveBeenCalled();
@@ -99,7 +131,7 @@ describe("/skills entry", () => {
   });
 
   it("Add skill offers create, both imports and the community search", () => {
-    mocks.skills = { data: [], isLoading: false, isError: false };
+    mocks.skills = { data: [], isLoading: false, isError: false, isFetching: false };
     renderView();
     fireEvent.click(screen.getByText("Add skill"));
     expect(screen.getByText("Import from file")).toBeInTheDocument();
@@ -109,7 +141,7 @@ describe("/skills entry", () => {
   });
 
   it("a failed load shows the error state", () => {
-    mocks.skills = { data: undefined, isLoading: false, isError: true };
+    mocks.skills = { data: undefined, isLoading: false, isError: true, isFetching: false };
     renderView();
     expect(screen.getByText("Could not load skills.")).toBeInTheDocument();
   });

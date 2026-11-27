@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Review, RunTrace } from '@devdigest/shared';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockEmbedder, MockGitClient, MockLLMProvider } from '../src/adapters/mocks.js';
+import { MockEmbedder, MockGitClient, MockLLMProvider, MockSecretsProvider } from '../src/adapters/mocks.js';
+import { ReviewRepository } from '../src/modules/reviews/repository.js';
 import * as t from '../src/db/schema.js';
 
 const hasDocker = await dockerAvailable();
@@ -170,5 +171,48 @@ d('skills in review runs (Postgres)', () => {
     expect(trace.prompt_assembly.skills ?? null).toBeNull();
     expect(trace.log.map((l) => l.msg)).toContain('Skills: none enabled for this agent');
     await app.close();
+  });
+
+  it('saves the trace before the run turns terminal, on success and on failure', async () => {
+    const seen: { status: string; trace: boolean }[] = [];
+    const complete = ReviewRepository.prototype.completeAgentRun;
+    /**
+     * Wrap our own repository (not a library) to look at the trace at the exact moment the
+     * terminal status is written: a reader polling the status must already find the trace.
+     */
+    const spy = vi
+      .spyOn(ReviewRepository.prototype, 'completeAgentRun')
+      .mockImplementation(async function (this: ReviewRepository, runId, values) {
+        seen.push({ status: values.status, trace: (await this.getRunTrace(runId)) !== undefined });
+        return complete.call(this, runId, values);
+      });
+    try {
+      const app = await makeApp();
+      await review(app, await newAgent(app, 'Run Order Agent'));
+      await app.close();
+
+      /** No Anthropic key: resolving the provider throws inside the run, so it fails. */
+      const failing = await buildApp({
+        config: loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv),
+        db: pg.handle.db,
+        overrides: { embedder: new MockEmbedder(), git: new MockGitClient({ diff: DIFF }), secrets: new MockSecretsProvider() },
+      });
+      const created = await failing.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: { name: 'Run Order Failing', provider: 'anthropic', model: 'claude-x', system_prompt: 'Review.', repo_intel: false },
+      });
+      const pr = await newPr();
+      await failing.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: created.json().id } });
+      const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+      expect(run?.status).toBe('failed');
+      await failing.close();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toEqual([
+      { status: 'done', trace: true },
+      { status: 'failed', trace: true },
+    ]);
   });
 });

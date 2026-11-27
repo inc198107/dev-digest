@@ -235,11 +235,6 @@
     "text": "Date.now()"
   },
   {
-    "rule": "core-no-ambient-io",
-    "file": "src/modules/reviews/run-executor.ts",
-    "text": "Date.now()"
-  },
-  {
     "rule": "service-takes-narrow-deps",
     "file": "src/modules/reviews/run-executor.ts",
     "text": "private container: Container"

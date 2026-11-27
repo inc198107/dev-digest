@@ -104,6 +104,7 @@ export function ConfigTab({ agent }: { agent: Agent }) {
           onChange={setModel}
           options={modelOptions}
           placeholder={t("config.modelSearch")}
+          ariaLabel={t("config.model")}
         />
       </FormField>
       <FormField label={t("config.strategy")} hint={t("config.strategyHint")}>

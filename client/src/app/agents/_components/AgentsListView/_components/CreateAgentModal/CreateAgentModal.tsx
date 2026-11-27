@@ -94,6 +94,7 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
             onChange={setModel}
             options={modelOptions}
             placeholder={t("config.modelSearch")}
+            ariaLabel={t("create.fields.model")}
           />
         </FormField>
         <FormField label={t("create.fields.systemPrompt")}>

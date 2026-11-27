@@ -180,7 +180,7 @@ export function Gallery() {
         </div>
         <div style={s.w220}>
           <FormField label="Model (searchable)">
-            <SearchableSelect value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} />
+            <SearchableSelect value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} ariaLabel="Model (searchable)" />
           </FormField>
         </div>
         <div style={s.w280}>

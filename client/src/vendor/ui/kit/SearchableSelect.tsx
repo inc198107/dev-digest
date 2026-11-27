@@ -38,6 +38,10 @@ function placeList(trigger: DOMRect, listHeight: number): Placement {
  * by value and label; Enter selects, ↑/↓ move, Esc closes. The open list is a
  * manual popover in the top layer, fixed to the trigger, so a scrolling container
  * such as the Modal body does not clip it.
+ * The trigger is a button: Tab reaches it, Enter/Space/↓/↑ open the list, and
+ * choosing, Esc or Tab closes it and returns focus to the trigger.
+ * @param props.ariaLabel - the field's label; the trigger is announced as
+ *   "<label>: <selected value>"
  */
 export function SearchableSelect({
   value,
@@ -46,6 +50,7 @@ export function SearchableSelect({
   placeholder = "Search…",
   mono = true,
   maxHeight = 280,
+  ariaLabel,
 }: {
   value: string;
   onChange?: (v: string) => void;
@@ -53,13 +58,14 @@ export function SearchableSelect({
   placeholder?: string;
   mono?: boolean;
   maxHeight?: number;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [hi, setHi] = React.useState(0);
   const [place, setPlace] = React.useState<Placement | null>(null);
   const ref = React.useRef<HTMLDivElement>(null);
-  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -109,10 +115,24 @@ export function SearchableSelect({
 
   const current = options.find((o) => optValue(o) === value);
   const currentLabel = current ? optLabel(current) : value || placeholder;
+  /** The selected value stays in the accessible name: aria-label replaces the button's text. */
+  const valueText = current ? optLabel(current) : value;
+  const triggerName = ariaLabel && valueText ? `${ariaLabel}: ${valueText}` : ariaLabel;
 
+  /** Close the list and give focus back to the trigger (keyboard users stay in place). */
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
   const pick = (o: SelectOption) => {
     onChange?.(optValue(o));
-    setOpen(false);
+    close();
+  };
+  const onTriggerKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      setOpen(true);
+    }
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -125,25 +145,33 @@ export function SearchableSelect({
       e.preventDefault();
       const o = filtered[hi];
       if (o) pick(o);
-    } else if (e.key === "Escape") {
+    } else if (e.key === "Escape" || e.key === "Tab") {
       e.preventDefault();
-      setOpen(false);
+      close();
     }
   };
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div
+      <button
         ref={triggerRef}
+        type="button"
+        aria-expanded={open}
+        aria-label={triggerName}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onTriggerKey}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 10,
+          width: "100%",
           padding: "10px 12px",
           borderRadius: 7,
           border: "1px solid var(--border-strong)",
           background: "var(--bg-elevated)",
+          color: "inherit",
+          font: "inherit",
+          textAlign: "left",
           cursor: "pointer",
         }}
       >
@@ -161,7 +189,7 @@ export function SearchableSelect({
           {currentLabel}
         </span>
         <Icon.ChevronsUpDown size={14} style={{ color: "var(--text-muted)" }} />
-      </div>
+      </button>
       {open && (
         <div
           ref={listRef}

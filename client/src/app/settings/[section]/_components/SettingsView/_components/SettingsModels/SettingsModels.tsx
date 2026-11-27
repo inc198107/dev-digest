@@ -56,6 +56,7 @@ export function SettingsModels() {
                 onChange={(m) => setModel(f.id, m)}
                 options={options}
                 placeholder={t("models.search")}
+                ariaLabel={f.label}
               />
             </FormField>
           </div>

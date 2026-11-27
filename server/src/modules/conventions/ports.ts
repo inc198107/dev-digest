@@ -106,8 +106,9 @@ export interface RepoSources {
   samplePaths(repoId: string, n: number): Promise<string[]>;
   /**
    * @param repo The clone.
-   * @param path Repo-relative path, taken from `samplePaths` only.
-   * @returns The file's text, or null when it cannot be read.
+   * @param path Repo-relative path chosen by code: a `samplePaths` result or a `CONFIG_FILES`
+   *   entry, never a path from the model.
+   * @returns The file's text, or null when it does not exist or cannot be read.
    */
   readFile(repo: RepoRef, path: string): Promise<string | null>;
 }

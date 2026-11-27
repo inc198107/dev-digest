@@ -16,11 +16,14 @@ const CONVENTION: ConventionCandidate = {
   accepted: false,
 };
 
+const REPO = { full_name: "acme/payments-api", default_branch: "main" };
+
 /**
  * @param convention The convention to show.
+ * @param repo The repo it comes from; null renders the card without a GitHub link.
  * @returns The card with spied callbacks.
  */
-function renderCard(convention: ConventionCandidate = CONVENTION) {
+function renderCard(convention: ConventionCandidate = CONVENTION, repo: typeof REPO | null = REPO) {
   const handlers = {
     onToggleAccepted: vi.fn(),
     onReject: vi.fn(),
@@ -29,7 +32,7 @@ function renderCard(convention: ConventionCandidate = CONVENTION) {
   };
   render(
     <NextIntlClientProvider locale="en" messages={{ conventions: conventionsMessages }}>
-      <ConventionCard convention={convention} {...handlers} />
+      <ConventionCard convention={convention} repo={repo} {...handlers} />
     </NextIntlClientProvider>,
   );
   return handlers;
@@ -42,6 +45,29 @@ describe("ConventionCard", () => {
     expect(screen.getByText("src/api/users.ts:23-31")).toBeInTheDocument();
     expect(screen.getByText("const user = await db.users.find(id);")).toBeInTheDocument();
     expect(screen.getByText("91%")).toBeInTheDocument();
+  });
+
+  it("links the evidence to the cited lines on GitHub in a new tab", () => {
+    renderCard();
+    const link = screen.getByRole("link", { name: "Open src/api/users.ts:23-31 on GitHub" });
+    expect(link).toHaveTextContent("src/api/users.ts:23-31");
+    expect(link).toHaveAttribute("href", "https://github.com/acme/payments-api/blob/main/src/api/users.ts#L23-L31");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("links single-line evidence as #L<n>", () => {
+    renderCard({ ...CONVENTION, evidence_path: "tsconfig.json:3" });
+    expect(screen.getByRole("link", { name: "Open tsconfig.json:3 on GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/payments-api/blob/main/tsconfig.json#L3",
+    );
+  });
+
+  it("shows the evidence path as plain text while the repo is unknown", () => {
+    renderCard(CONVENTION, null);
+    expect(screen.getByText("src/api/users.ts:23-31")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("accepts, rejects and copies through its callbacks", () => {

@@ -5,7 +5,6 @@ import type {
   ConventionUpdateBody,
   LLMProvider,
 } from '@devdigest/shared';
-import type { z } from 'zod';
 import {
   AppError,
   ConflictError,
@@ -13,23 +12,20 @@ import {
   NotFoundError,
 } from '../../platform/errors.js';
 import {
+  CONFIG_FILES,
   EXTRACTION_SCHEMA,
-  FILE_SELECTION_SCHEMA,
   LLM_MAX_RETRIES,
   LLM_TEMPERATURE,
   LLM_TIMEOUT_MS,
-  MAX_TOTAL_CHARS,
-  SAMPLE_POOL_SIZE,
+  SAMPLE_FILES,
 } from './constants.js';
 import {
   ConventionExtraction,
-  ConventionFileSelection,
   extractionPrompt,
-  fileSelectionPrompt,
-  fitToBudget,
+  fitScanFiles,
   groundConventions,
-  pickFiles,
   type PromptText,
+  scanFileList,
   type SourceFile,
   toSourceFile,
   withoutAccepted,
@@ -44,9 +40,9 @@ import type {
 
 /**
  * Conventions use cases (application ring): scan a repo for house rules, list them, accept,
- * reword or reject them. A scan reads files only from the repo-intel sample, asks the model in
- * two steps (pick files, then extract rules) and stores only conventions grounded in the lines it
- * read; the model is never called inside a transaction.
+ * reword or reject them. Code alone picks what a scan reads (the repo's config files from a fixed
+ * allowlist and the top repo-intel sample); the model is asked once, and only conventions grounded
+ * in the lines it read are stored. The model is never called inside a transaction.
  */
 
 /** What the conventions use cases need from the outside, injected by the routes plugin. */
@@ -79,43 +75,41 @@ export class ConventionsService {
   }
 
   /**
-   * Scan the repo: sample → model picks files → read them → model extracts rules → ground →
-   * replace the not-accepted conventions in one transaction. Accepted ones stay (stamped with
-   * this scan's time), and a new rule that repeats one of them is skipped. A failure stores
-   * nothing.
+   * Scan the repo: the top repo-intel sample and the config files that exist (both chosen by
+   * code) → read them within the budget → ONE model call extracts rules → ground → replace the
+   * not-accepted conventions in one transaction. Accepted ones stay (stamped with this scan's
+   * time), and a new rule that repeats one of them is skipped. A failure stores nothing.
    * @param workspaceId Tenant scope.
    * @param repoId Repository id.
-   * @returns The repo's conventions after the scan and the files the model read.
+   * @returns The repo's conventions after the scan and the files the model read (configs first).
    * @throws NotFoundError when the repo is not in this workspace.
-   * @throws ConflictError when the repo is not cloned or not indexed, or no file can be read.
-   * @throws ExternalServiceError when the extraction call fails.
+   * @throws ConflictError when the repo is not cloned or not indexed, or no sampled file can be
+   *   read (config files alone are not enough to scan).
+   * @throws ExternalServiceError when the model call fails.
    */
   async extract(workspaceId: string, repoId: string): Promise<ConventionScanResult> {
     const repo = await this.requireRepo(workspaceId, repoId);
     if (!repo.cloned) {
       throw new ConflictError('Repository is not cloned yet. Wait for the clone to finish, then scan again.');
     }
-    const pool = await this.deps.sources.samplePaths(repoId, SAMPLE_POOL_SIZE);
-    if (pool.length === 0) {
+    const samples = await this.deps.sources.samplePaths(repoId, SAMPLE_FILES);
+    if (samples.length === 0) {
       throw new ConflictError('Repository is not indexed yet. Wait for indexing or run Resync, then scan again.');
     }
     const model = await this.deps.model(workspaceId);
-    const session = `conventions-${repoId}`;
 
-    const picked = pickFiles(await this.selectFiles(model, session, repo.name, pool), pool);
-    const files = fitToBudget(await this.readFiles(repo, picked), MAX_TOTAL_CHARS);
-    if (files.length === 0) {
+    const [configs, sources] = await Promise.all([
+      this.readFiles(repo, CONFIG_FILES),
+      this.readFiles(repo, samples),
+    ]);
+    const files = fitScanFiles(configs, sources);
+    if (files.sources.length === 0) {
       throw new ConflictError('None of the sampled files could be read from the clone. Run Resync, then scan again.');
     }
 
-    const extraction = await this.ask(
-      model,
-      session,
-      EXTRACTION_SCHEMA,
-      ConventionExtraction,
-      extractionPrompt(repo.name, files),
-    );
-    const drafts = groundConventions(extraction.conventions, files);
+    const shown = scanFileList(files);
+    const extraction = await this.askModel(model, `conventions-${repoId}`, extractionPrompt(repo.name, files));
+    const drafts = groundConventions(extraction.conventions, shown);
 
     const list = await this.deps.uow.run(async (store) => {
       const accepted = await store.listAccepted(workspaceId, repoId);
@@ -124,7 +118,7 @@ export class ConventionsService {
       await store.touchAccepted(workspaceId, repoId);
       return store.list(workspaceId, repoId);
     });
-    return { ...list, analyzed_files: files.map((file) => file.path) };
+    return { ...list, analyzed_files: shown.map((file) => file.path) };
   }
 
   /**
@@ -175,69 +169,38 @@ export class ConventionsService {
   }
 
   /**
-   * File-selection step. Best effort: a failed call returns no picks, so the scan falls back to
-   * the highest-ranked samples instead of failing.
-   * @param model The feature's model.
-   * @param session OpenRouter session grouping both calls of a scan.
-   * @param repoName Repository name shown to the model.
-   * @param pool The ranked sample.
-   * @returns The paths the model picked (not yet checked against the sample).
-   */
-  private async selectFiles(model: FeatureModel, session: string, repoName: string, pool: string[]): Promise<string[]> {
-    try {
-      const answer = await this.ask(
-        model,
-        session,
-        FILE_SELECTION_SCHEMA,
-        ConventionFileSelection,
-        fileSelectionPrompt(repoName, pool),
-      );
-      return answer.files;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Read the picked files; unreadable, binary or blank files are skipped.
+   * Read files from the clone, keeping their order; missing, unreadable, binary or blank files
+   * are skipped (a config file the repo does not have is simply absent).
    * @param repo The clone.
-   * @param paths Paths from the sample.
+   * @param paths Paths chosen by code: the sample or the config allowlist, never the model.
    * @returns The files as the model will see them.
    */
-  private async readFiles(repo: ScanRepo, paths: string[]): Promise<SourceFile[]> {
-    const files: SourceFile[] = [];
-    for (const path of paths) {
-      const content = await this.deps.sources.readFile(repo.ref, path);
-      const file = content === null ? null : toSourceFile(path, content);
-      if (file) files.push(file);
-    }
-    return files;
+  private async readFiles(repo: ScanRepo, paths: readonly string[]): Promise<SourceFile[]> {
+    const read = await Promise.all(
+      paths.map(async (path) => {
+        const content = await this.deps.sources.readFile(repo.ref, path);
+        return content === null ? null : toSourceFile(path, content);
+      }),
+    );
+    return read.filter((file): file is SourceFile => file !== null);
   }
 
   /**
-   * One structured model call; failures that are not already application errors become
-   * ExternalServiceError (502).
+   * The scan's single structured model call; failures that are not already application errors
+   * become ExternalServiceError (502).
    * @param model The feature's model.
    * @param session OpenRouter session id.
-   * @param schemaName Name of the answer schema.
-   * @param schema The answer schema.
    * @param prompt System and user text.
    * @returns The validated answer.
    * @throws ExternalServiceError when the call or the validation fails.
    */
-  private async ask<T>(
-    model: FeatureModel,
-    session: string,
-    schemaName: string,
-    schema: z.ZodType<T>,
-    prompt: PromptText,
-  ): Promise<T> {
+  private async askModel(model: FeatureModel, session: string, prompt: PromptText): Promise<ConventionExtraction> {
     const llm: LLMProvider = model.llm;
     try {
       const result = await llm.completeStructured({
         model: model.model,
-        schema,
-        schemaName,
+        schema: ConventionExtraction,
+        schemaName: EXTRACTION_SCHEMA,
         messages: [
           { role: 'system', content: prompt.system },
           { role: 'user', content: prompt.user },

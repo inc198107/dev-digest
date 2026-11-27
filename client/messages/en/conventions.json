@@ -45,7 +45,8 @@
     "ruleEmpty": "The rule cannot be empty.",
     "ruleTooLong": "At most {max} characters.",
     "copy": "Copy snippet",
-    "copied": "Snippet copied"
+    "copied": "Snippet copied",
+    "openOnGithub": "Open {path} on GitHub"
   },
   "modal": {
     "title": "Create skill from conventions",
@@ -59,7 +60,6 @@
     "enabled": "Enabled",
     "enabledHint": "Whether this block is added to agents' prompts.",
     "body": "Skill body",
-    "unsaved": "unsaved",
     "tokens": "{count} tokens",
     "bodyTooLong": "The body is longer than {max} characters.",
     "footer": "Saved as v1 · added to Skills Lab",

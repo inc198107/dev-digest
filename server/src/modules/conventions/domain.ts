@@ -3,26 +3,19 @@ import { wrapUntrusted } from '@devdigest/reviewer-core';
 import { MAX_CONVENTION_RULE_CHARS, type ConventionCandidate } from '@devdigest/shared';
 import {
   EXTRACTION_SYSTEM_PROMPT,
-  FILE_SELECTION_SYSTEM_PROMPT,
   MAX_CANDIDATES,
+  MAX_CONFIG_CHARS,
   MAX_FILE_CHARS,
   MAX_FILE_LINES,
-  MAX_SELECTED_FILES,
   MAX_SNIPPET_LINES,
-  MIN_SELECTED_FILES,
+  MAX_TOTAL_CHARS,
 } from './constants.js';
 
 /**
- * Conventions rules (domain ring): the model's answer shapes, the prompts, which files a scan
- * reads, and grounding — every stored convention cites real lines of a file the model saw.
- * Pure: no I/O, no clock.
+ * Conventions rules (domain ring): the model's answer shape, the prompt, how the files a scan
+ * reads fit the budget, and grounding — every stored convention cites real lines of a file the
+ * model saw. Pure: no I/O, no clock.
  */
-
-/** Answer of the file-selection step. */
-export const ConventionFileSelection = z.object({
-  files: z.array(z.string()),
-});
-export type ConventionFileSelection = z.infer<typeof ConventionFileSelection>;
 
 /** One convention as the model reports it, before grounding. */
 export const ExtractedConvention = z.object({
@@ -34,7 +27,7 @@ export const ExtractedConvention = z.object({
 });
 export type ExtractedConvention = z.infer<typeof ExtractedConvention>;
 
-/** Answer of the extraction step. */
+/** Answer of the scan's single model call. */
 export const ConventionExtraction = z.object({
   conventions: z.array(ExtractedConvention),
 });
@@ -48,6 +41,14 @@ export interface SourceFile {
   path: string;
   /** Line `n` of the file is `lines[n - 1]`. */
   lines: string[];
+}
+
+/** What one scan shows the model, chosen by code: the repo's config files and its sample. */
+export interface ScanFiles {
+  /** Config files from the allowlist that exist at the clone root, in allowlist order. */
+  configs: SourceFile[];
+  /** Sampled source files, most central first. */
+  sources: SourceFile[];
 }
 
 /** A cited line range, 1-based and inclusive. */
@@ -82,38 +83,6 @@ export function cleanPath(raw: string): string {
     .replace(/\\/g, '/')
     .replace(/^(\.\/)+/, '')
     .replace(/:\d+(-\d+)?$/, '');
-}
-
-/**
- * Choose the files to read: the model's picks that are in the sample, in its order, without
- * repeats. A path outside the sample is never read. Fewer than `min` valid picks (or a failed
- * selection step, `selected = []`) are topped up with the highest-ranked samples.
- * @param selected Paths the model picked.
- * @param pool The ranked sample, most central first.
- * @param max Most files to read.
- * @param min Fewest valid picks accepted without topping up.
- * @returns Paths to read, all from `pool`.
- */
-export function pickFiles(
-  selected: string[],
-  pool: string[],
-  max = MAX_SELECTED_FILES,
-  min = MIN_SELECTED_FILES,
-): string[] {
-  const inPool = new Set(pool);
-  const picked: string[] = [];
-  for (const raw of selected) {
-    if (picked.length >= max) break;
-    const path = cleanPath(raw);
-    if (inPool.has(path) && !picked.includes(path)) picked.push(path);
-  }
-  if (picked.length < min) {
-    for (const path of pool) {
-      if (picked.length >= max) break;
-      if (!picked.includes(path)) picked.push(path);
-    }
-  }
-  return picked;
 }
 
 /**
@@ -171,6 +140,40 @@ export function fitToBudget(files: SourceFile[], maxTotalChars: number): SourceF
 }
 
 /**
+ * Fit a scan's files into the prompt budget: the config files first, within their own share,
+ * then the sampled files, in rank order, within the rest of the total. A sampled file that
+ * repeats a config path is dropped.
+ * @param configs Config files that exist, in allowlist order.
+ * @param sources Sampled source files, most central first.
+ * @param maxConfigChars Most characters the config files take.
+ * @param maxTotalChars Budget of the whole scan.
+ * @returns The files the model is shown.
+ */
+export function fitScanFiles(
+  configs: SourceFile[],
+  sources: SourceFile[],
+  maxConfigChars = MAX_CONFIG_CHARS,
+  maxTotalChars = MAX_TOTAL_CHARS,
+): ScanFiles {
+  const keptConfigs = fitToBudget(configs, Math.min(maxConfigChars, maxTotalChars));
+  const used = keptConfigs.reduce((sum, file) => sum + sourceSize(file), 0);
+  const configPaths = new Set(configs.map((file) => file.path));
+  const keptSources = fitToBudget(
+    sources.filter((file) => !configPaths.has(file.path)),
+    maxTotalChars - used,
+  );
+  return { configs: keptConfigs, sources: keptSources };
+}
+
+/**
+ * @param files The files of one scan.
+ * @returns Every file the model is shown, config files first.
+ */
+export function scanFileList(files: ScanFiles): SourceFile[] {
+  return [...files.configs, ...files.sources];
+}
+
+/**
  * @param file A shown file.
  * @returns Its lines, each prefixed with its right-aligned number and `| `.
  */
@@ -188,38 +191,33 @@ function untrustedLabel(path: string): string {
 }
 
 /**
- * Prompt of the file-selection step.
- * @param repoName Repository name shown to the model.
- * @param pool The ranked sample, most central first.
- * @returns System and user text.
+ * @param files Shown files.
+ * @returns One `<untrusted>` block per file, its lines numbered.
  */
-export function fileSelectionPrompt(repoName: string, pool: string[]): PromptText {
-  const list = pool.map((path, i) => `${i + 1}. ${path}`).join('\n');
-  return {
-    system: FILE_SELECTION_SYSTEM_PROMPT,
-    user: [
-      `Repository: ${repoName}`,
-      'Source files, most central first:',
-      wrapUntrusted('file-list', list),
-      `Return the paths of at most ${MAX_SELECTED_FILES} files to read.`,
-    ].join('\n\n'),
-  };
+function fileBlocks(files: SourceFile[]): string[] {
+  return files.map((file) => wrapUntrusted(untrustedLabel(file.path), numberLines(file)));
 }
 
 /**
- * Prompt of the extraction step: every file numbered and wrapped as untrusted data.
+ * Prompt of the scan's model call: the config files (when the repo has any) and the sampled files,
+ * every line numbered and every file wrapped as untrusted data.
  * @param repoName Repository name shown to the model.
  * @param files The files read for this scan.
  * @returns System and user text.
  */
-export function extractionPrompt(repoName: string, files: SourceFile[]): PromptText {
-  const blocks = files.map((file) => wrapUntrusted(untrustedLabel(file.path), numberLines(file)));
+export function extractionPrompt(repoName: string, files: ScanFiles): PromptText {
+  const configs =
+    files.configs.length > 0
+      ? [`Config files (${files.configs.length}), ESLint, TypeScript and Prettier settings:`, ...fileBlocks(files.configs)]
+      : [];
   return {
     system: EXTRACTION_SYSTEM_PROMPT,
     user: [
       `Repository: ${repoName}`,
-      `Files (${files.length}); each line starts with its line number:`,
-      ...blocks,
+      'Each line of every file below starts with its line number.',
+      ...configs,
+      `Source files (${files.sources.length}), most central first:`,
+      ...fileBlocks(files.sources),
       'Report the house conventions these files follow.',
     ].join('\n\n'),
   };

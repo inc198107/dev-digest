@@ -22,7 +22,9 @@ vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("@/lib/repo-context", () => ({
-  useActiveRepo: () => ({ activeRepo: { id: "r1", name: "payments-api", full_name: "acme/payments-api" } }),
+  useActiveRepo: () => ({
+    activeRepo: { id: "r1", name: "payments-api", full_name: "acme/payments-api", default_branch: "main" },
+  }),
   useRepoNotFound: () => false,
 }));
 vi.mock("@/lib/hooks/conventions", () => ({
@@ -125,6 +127,15 @@ describe("ConventionsView", () => {
     expect(state.update.mutate).toHaveBeenCalledWith({ id: "c2", patch: { accepted: true } });
     fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
     expect(state.reject.mutate).toHaveBeenCalledWith("c2");
+  });
+
+  it("links each card's evidence to the file on the active repo's default branch", () => {
+    renderView();
+    const card = screen.getByRole("article", { name: "Redis goes through the singleton" });
+    expect(within(card).getByRole("link", { name: "Open src/api/users.ts:40 on GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/payments-api/blob/main/src/api/users.ts#L40",
+    );
   });
 
   it("disables Create skill until a convention is accepted, then opens the modal with a free name", () => {

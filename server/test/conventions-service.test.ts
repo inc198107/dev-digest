@@ -2,13 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { ConventionCandidate, ConventionList, ConventionUpdateBody, RepoRef } from '@devdigest/shared';
 import { MockLLMProvider } from '../src/adapters/mocks.js';
 import { ConventionsService } from '../src/modules/conventions/service.js';
+import { CONFIG_FILES } from '../src/modules/conventions/constants.js';
 import type { ConventionDraft } from '../src/modules/conventions/domain.js';
 import type { ConventionsStore, RepoSources, ScanRepo } from '../src/modules/conventions/ports.js';
 import { ConfigError, ConflictError, ExternalServiceError, NotFoundError } from '../src/platform/errors.js';
 
 /**
  * Conventions use cases against in-memory fakes of their own ports and the MockLLMProvider
- * (`structuredBySchema` answers the two steps of a scan): no Postgres, no Container, no vi.mock.
+ * (`structuredBySchema` answers the scan's single call): no Postgres, no Container, no vi.mock.
  * The real store and routes are covered by conventions.it.test.ts.
  */
 
@@ -77,21 +78,27 @@ const FILES: Record<string, string> = {
   'src/api/public/index.ts': 'export function handler(): Result<Item[], ApiError> {\n  return ok(items);\n}\n',
 };
 
-/** RepoSources fake that records every read. */
+const TSCONFIG = '{\n  "compilerOptions": {\n    "strict": true\n  }\n}\n';
+const ESLINTRC = '{\n  "rules": { "no-default-export": "error" }\n}\n';
+
+/** RepoSources fake that records every read and every sample size asked for. */
 class FakeSources implements RepoSources {
   reads: string[] = [];
+  sampleSizes: number[] = [];
   repo: ScanRepo | undefined = { ref: { owner: 'acme', name: 'payments-api' }, name: 'payments-api', cloned: true };
   pool = Object.keys(FILES);
+  files: Record<string, string> = { ...FILES };
 
   async findRepo(workspaceId: string, repoId: string) {
     return workspaceId === WS && repoId === REPO ? this.repo : undefined;
   }
-  async samplePaths(): Promise<string[]> {
+  async samplePaths(_repoId: string, n: number): Promise<string[]> {
+    this.sampleSizes.push(n);
     return this.pool;
   }
   async readFile(_repo: RepoRef, path: string): Promise<string | null> {
     this.reads.push(path);
-    return FILES[path] ?? null;
+    return this.files[path] ?? null;
   }
 }
 
@@ -138,20 +145,23 @@ describe('ConventionsService', () => {
   beforeEach(() => {
     store = new FakeStore();
     sources = new FakeSources();
-    service = build({
-      ConventionFileSelection: { files: ['src/lib/redis.ts', 'src/api/users.ts', '../../.env'] },
-      ConventionExtraction: EXTRACTION,
-    });
+    service = build({ ConventionExtraction: EXTRACTION });
   });
 
-  it('scans in two model calls and stores only grounded conventions', async () => {
+  /**
+   * @returns The user message of the scan's model call.
+   */
+  function promptOfCall(): string {
+    const req = llm.calls[0]!.req as { messages: { role: string; content: string }[] };
+    return req.messages[1]!.content;
+  }
+
+  it('scans with exactly one model call and stores only grounded conventions', async () => {
     const result = await service.extract(WS, REPO);
 
-    expect(llm.calls.map((c) => (c.req as { schemaName: string }).schemaName)).toEqual([
-      'ConventionFileSelection',
-      'ConventionExtraction',
-    ]);
-    expect(result.analyzed_files).toEqual(['src/lib/redis.ts', 'src/api/users.ts', 'src/api/public/index.ts']);
+    expect(llm.calls).toHaveLength(1);
+    expect(llm.calls[0]).toMatchObject({ method: 'completeStructured', req: { schemaName: 'ConventionExtraction' } });
+    expect(result.analyzed_files).toEqual(['src/api/users.ts', 'src/lib/redis.ts', 'src/api/public/index.ts']);
     expect(result.candidates.map((c) => [c.rule, c.evidence_path, c.accepted])).toEqual([
       ['Always use async/await instead of .then() chains', 'src/api/users.ts:1-3', false],
       ['Redis access goes through the src/lib/redis.ts singleton', 'src/lib/redis.ts:2', false],
@@ -160,25 +170,51 @@ describe('ConventionsService', () => {
     expect(result.last_scan_at).not.toBeNull();
   });
 
-  it('never reads a path the model picked outside the sample', async () => {
+  it('asks repo-intel for the top 12 files', async () => {
     await service.extract(WS, REPO);
-    expect(sources.reads).not.toContain('../../.env');
-    expect(sources.reads.every((p) => sources.pool.includes(p))).toBe(true);
+    expect(sources.sampleSizes).toEqual([12]);
+  });
+
+  it('reads only paths chosen by code: the sample and the config allowlist', async () => {
+    await service.extract(WS, REPO);
+    expect(sources.reads.every((p) => sources.pool.includes(p) || CONFIG_FILES.includes(p))).toBe(true);
+    expect(sources.reads).toEqual(expect.arrayContaining([...CONFIG_FILES, ...sources.pool]));
   });
 
   it('sends the files as untrusted, numbered data with the chosen model', async () => {
     await service.extract(WS, REPO);
-    const req = llm.calls[1]!.req as { model: string; messages: { role: string; content: string }[] };
+    const req = llm.calls[0]!.req as { model: string };
     expect(req.model).toBe('cheap-model');
-    expect(req.messages[1]!.content).toContain('<untrusted source="file:src/api/users.ts">');
-    expect(req.messages[1]!.content).toContain('2|   const user = await db.users.find(id);');
+    expect(promptOfCall()).toContain('<untrusted source="file:src/api/users.ts">');
+    expect(promptOfCall()).toContain('2|   const user = await db.users.find(id);');
   });
 
-  it('falls back to the top-ranked samples when the selection step fails', async () => {
-    service = build({ ConventionFileSelection: { nope: true }, ConventionExtraction: EXTRACTION });
+  it('includes the config files that exist, before the sample, and grounds rules in them', async () => {
+    sources.files = { ...FILES, 'tsconfig.json': TSCONFIG, '.eslintrc.json': ESLINTRC };
+    service = build({
+      ConventionExtraction: {
+        conventions: [
+          ...EXTRACTION.conventions,
+          { rule: 'Compile with strict type checks', evidence_path: 'tsconfig.json', start_line: 3, end_line: 3, confidence: 0.8 },
+        ],
+      },
+    });
+
+    const result = await service.extract(WS, REPO);
+    expect(llm.calls).toHaveLength(1);
+    expect(result.analyzed_files).toEqual(['.eslintrc.json', 'tsconfig.json', ...sources.pool]);
+    expect(promptOfCall()).toContain('Config files (2)');
+    expect(promptOfCall()).toContain('<untrusted source="file:tsconfig.json">');
+    expect(result.candidates.find((c) => c.rule === 'Compile with strict type checks')).toMatchObject({
+      evidence_path: 'tsconfig.json:3',
+      evidence_snippet: '"strict": true',
+    });
+  });
+
+  it('leaves configs out of the prompt when the repo has none', async () => {
     const result = await service.extract(WS, REPO);
     expect(result.analyzed_files).toEqual(sources.pool);
-    expect(result.candidates).toHaveLength(2);
+    expect(promptOfCall()).not.toContain('Config files');
   });
 
   it('keeps accepted (reworded) conventions on a re-scan and skips their repeats', async () => {
@@ -205,7 +241,7 @@ describe('ConventionsService', () => {
   it('stores nothing when the extraction call fails', async () => {
     await service.extract(WS, REPO);
     const before = store.rows.map((r) => r.id);
-    service = build({ ConventionFileSelection: { files: [] }, ConventionExtraction: { wrong: 1 } });
+    service = build({ ConventionExtraction: { wrong: 1 } });
 
     await expect(service.extract(WS, REPO)).rejects.toBeInstanceOf(ExternalServiceError);
     expect(store.rows.map((r) => r.id)).toEqual(before);
@@ -233,6 +269,17 @@ describe('ConventionsService', () => {
     sources.repo = { ...sources.repo, cloned: true };
     sources.pool = [];
     await expect(service.extract(WS, REPO)).rejects.toBeInstanceOf(ConflictError);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it('does not scan on config files alone', async () => {
+    sources.files = { 'tsconfig.json': TSCONFIG };
+
+    sources.pool = [];
+    await expect(service.extract(WS, REPO)).rejects.toThrow(/not indexed/);
+
+    sources.pool = ['src/gone.ts'];
+    await expect(service.extract(WS, REPO)).rejects.toThrow(/None of the sampled files could be read/);
     expect(llm.calls).toHaveLength(0);
   });
 

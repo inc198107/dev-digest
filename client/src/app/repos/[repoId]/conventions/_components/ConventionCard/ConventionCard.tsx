@@ -5,13 +5,14 @@ import { useTranslations } from "next-intl";
 import { Button, IconBtn, ProgressBar, Textarea } from "@devdigest/ui";
 import type { ConventionCandidate } from "@devdigest/shared";
 import { HIGH_CONFIDENCE, RULE_EDITOR_ROWS } from "./constants";
-import { ruleProblem } from "./helpers";
+import { evidenceGithubUrl, ruleProblem, type EvidenceRepo } from "./helpers";
 import { s } from "./styles";
 
 /**
  * One extracted convention: the rule (editable in place), the code that shows it, the model's
- * confidence, and Accept / Reject.
+ * confidence, and Accept / Reject. The evidence path links to the cited lines on GitHub.
  * @param props.convention The convention.
+ * @param props.repo The repo it was extracted from; without it the path is plain text.
  * @param props.onToggleAccepted Accept it, or take the acceptance back.
  * @param props.onReject Reject it (the page deletes it).
  * @param props.onSaveRule Store a reworded rule.
@@ -21,6 +22,7 @@ import { s } from "./styles";
  */
 export function ConventionCard({
   convention,
+  repo,
   onToggleAccepted,
   onReject,
   onSaveRule,
@@ -28,6 +30,7 @@ export function ConventionCard({
   busy = false,
 }: {
   convention: ConventionCandidate;
+  repo?: EvidenceRepo | null;
   onToggleAccepted: () => void;
   onReject: () => void;
   onSaveRule: (rule: string) => void;
@@ -38,6 +41,7 @@ export function ConventionCard({
   const [draft, setDraft] = React.useState<string | null>(null);
   const problem = draft === null ? null : ruleProblem(draft);
   const pct = Math.round(convention.confidence * 100);
+  const evidenceHref = repo ? evidenceGithubUrl(repo, convention.evidence_path) : undefined;
 
   const save = () => {
     if (draft === null || problem) return;
@@ -78,9 +82,23 @@ export function ConventionCard({
 
         <div style={s.evidence}>
           <div style={s.evidenceHeader}>
-            <span className="mono" style={s.evidencePath} title={convention.evidence_path}>
-              {convention.evidence_path}
-            </span>
+            {evidenceHref ? (
+              <a
+                className="mono"
+                style={s.evidenceLink}
+                href={evidenceHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={convention.evidence_path}
+                aria-label={t("openOnGithub", { path: convention.evidence_path })}
+              >
+                {convention.evidence_path}
+              </a>
+            ) : (
+              <span className="mono" style={s.evidencePath} title={convention.evidence_path}>
+                {convention.evidence_path}
+              </span>
+            )}
             <IconBtn icon="Copy" size={24} label={t("copy")} onClick={onCopy} />
           </div>
           <pre className="mono" style={s.snippet}>

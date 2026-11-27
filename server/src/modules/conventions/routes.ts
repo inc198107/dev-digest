@@ -16,7 +16,7 @@ import { ConventionsService } from './service.js';
 /**
  * Conventions routes (http ring): parse → one use-case call → typed response.
  *   GET    /repos/:id/conventions           → the repo's conventions + last scan time
- *   POST   /repos/:id/conventions/extract   → scan the repo (two model calls, rate-limited)
+ *   POST   /repos/:id/conventions/extract   → scan the repo (one model call, rate-limited)
  *   PUT    /repos/:id/conventions/accepted  → accept all / deselect all
  *   PUT    /conventions/:id                 → reword and/or accept one
  *   DELETE /conventions/:id                 → reject one (deleted)

@@ -17,18 +17,25 @@ if (!hasDocker) {
 
 /**
  * Conventions Extractor on Postgres: every route with its response schema, the scan through the
- * real repo-intel facade (`file_rank` rows → `getConventionSamples`) and the mock git client,
- * re-scan keeping accepted conventions, workspace scoping, `created_at` as the last scan, and a
- * skill saved from conventions (`source: extracted`, `evidence_files`).
+ * real repo-intel facade (`file_rank` rows → `getConventionSamples`) plus the root config files,
+ * read by the mock git client, with a single model call; re-scan keeping accepted conventions,
+ * workspace scoping, `created_at` as the last scan, and a skill saved from conventions
+ * (`source: extracted`, `evidence_files`).
  */
 
-const FILES: Record<string, string> = {
+/** Ranked files (`file_rank` rows); the test file is dropped by repo-intel's junk filter. */
+const SOURCES: Record<string, string> = {
   'src/api/users.ts': 'export async function getUser(id: string) {\n  const user = await db.users.find(id);\n  return user;\n}\n',
   'src/lib/redis.ts': "import Redis from 'ioredis';\nexport const redis = new Redis(config.redisUrl);\n",
   'src/api/users.test.ts': "it('works', () => {});\n",
 };
 
-const SELECTION = { files: ['src/api/users.ts', 'src/lib/redis.ts', 'src/api/users.test.ts'] };
+/** Everything in the clone: the ranked files and a root tsconfig.json (not ranked). */
+const FILES: Record<string, string> = {
+  ...SOURCES,
+  'tsconfig.json': '{\n  "compilerOptions": {\n    "strict": true\n  }\n}\n',
+};
+
 const EXTRACTION = {
   conventions: [
     {
@@ -45,6 +52,7 @@ const EXTRACTION = {
       end_line: 2,
       confidence: 0.85,
     },
+    { rule: 'Compile with strict type checks', evidence_path: 'tsconfig.json', start_line: 3, end_line: 3, confidence: 0.8 },
     { rule: 'Rule from a test file', evidence_path: 'src/api/users.test.ts', start_line: 1, end_line: 1, confidence: 0.7 },
   ],
 };
@@ -54,6 +62,7 @@ d('conventions module (Postgres)', () => {
   let workspaceId: string;
   let repoId: string;
   let uncloned: string;
+  let unindexed: string;
   let otherRepoId: string;
   let otherConventionId: string;
   let llm: MockLLMProvider;
@@ -70,10 +79,15 @@ d('conventions module (Postgres)', () => {
       .returning();
     repoId = repo!.id;
     await db.insert(t.fileRank).values(
-      Object.keys(FILES).map((filePath, i) => ({ repoId, filePath, pagerank: 1 - i / 10, hotness: 0, rank: 1 - i / 10, percentile: 90 })),
+      Object.keys(SOURCES).map((filePath, i) => ({ repoId, filePath, pagerank: 1 - i / 10, hotness: 0, rank: 1 - i / 10, percentile: 90 })),
     );
     const [seeded] = await db.select().from(t.repos).where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.fullName, 'acme/payments-api')));
     uncloned = seeded!.id;
+    const [notIndexed] = await db
+      .insert(t.repos)
+      .values({ workspaceId, owner: 'acme', name: 'conv-unranked', fullName: 'acme/conv-unranked', clonePath: '/mock/clones/acme/conv-unranked' })
+      .returning();
+    unindexed = notIndexed!.id;
 
     const [other] = await db.insert(t.workspaces).values({ name: 'other-conventions' }).returning();
     const [otherRepo] = await db
@@ -95,7 +109,7 @@ d('conventions module (Postgres)', () => {
   beforeEach(async () => {
     await pg.handle.db.delete(t.conventions).where(eq(t.conventions.repoId, repoId));
     llm = new MockLLMProvider('openai', {
-      structuredBySchema: { ConventionFileSelection: SELECTION, ConventionExtraction: EXTRACTION },
+      structuredBySchema: { ConventionExtraction: EXTRACTION },
     });
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     app = await buildApp({
@@ -129,15 +143,18 @@ d('conventions module (Postgres)', () => {
     await app.close();
   });
 
-  it('scans through the repo-intel sample, grounds the rules and records the scan time', async () => {
+  it('scans the root configs and the repo-intel sample in one model call, grounds the rules and records the scan time', async () => {
     const result = await scan();
 
-    expect(result.analyzed_files).toEqual(['src/api/users.ts', 'src/lib/redis.ts']);
+    expect(llm.calls.filter((c) => c.method === 'completeStructured')).toHaveLength(1);
+    expect(result.analyzed_files).toEqual(['tsconfig.json', 'src/api/users.ts', 'src/lib/redis.ts']);
     expect(result.candidates.map((c) => [c.rule, c.evidence_path, c.accepted])).toEqual([
       ['Always use async/await instead of .then() chains', 'src/api/users.ts:1-3', false],
       ['Redis access goes through the src/lib/redis.ts singleton', 'src/lib/redis.ts:2', false],
+      ['Compile with strict type checks', 'tsconfig.json:3', false],
     ]);
     expect(result.candidates[1]!.evidence_snippet).toBe('export const redis = new Redis(config.redisUrl);');
+    expect(result.candidates[2]!.evidence_snippet).toBe('"strict": true');
     expect(Date.parse(result.last_scan_at!)).toBeGreaterThan(Date.now() - 60_000);
 
     const listed = (await app.inject({ method: 'GET', url: `/repos/${repoId}/conventions` })).json();
@@ -175,7 +192,7 @@ d('conventions module (Postgres)', () => {
 
     const again = await scan();
     expect(again.candidates.find((c) => c.id === first!.id)).toMatchObject({ rule: 'Prefer async/await', accepted: true });
-    expect(again.candidates).toHaveLength(3);
+    expect(again.candidates).toHaveLength(4);
     expect(again.candidates.filter((c) => !c.accepted).map((c) => c.id)).not.toContain(first!.id);
     await app.close();
   });
@@ -206,6 +223,14 @@ d('conventions module (Postgres)', () => {
     const res = await app.inject({ method: 'POST', url: `/repos/${uncloned}/conventions/extract` });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.message).toMatch(/not cloned/);
+    expect(llm.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it('answers 409 for a cloned repo without ranks, even though its clone has a tsconfig.json', async () => {
+    const res = await app.inject({ method: 'POST', url: `/repos/${unindexed}/conventions/extract` });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.message).toMatch(/not indexed/);
     expect(llm.calls).toHaveLength(0);
     await app.close();
   });

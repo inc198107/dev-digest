@@ -165,6 +165,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
               <ConventionCard
                 key={convention.id}
                 convention={convention}
+                repo={activeRepo}
                 busy={reject.isPending && reject.variables === convention.id}
                 onToggleAccepted={() => update.mutate({ id: convention.id, patch: { accepted: !convention.accepted } })}
                 onReject={() => reject.mutate(convention.id)}

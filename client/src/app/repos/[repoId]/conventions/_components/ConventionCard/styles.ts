@@ -48,6 +48,15 @@ export const s = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
+  evidenceLink: {
+    fontSize: 12,
+    color: "var(--accent-text)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    textDecoration: "underline",
+    textUnderlineOffset: 2,
+  } satisfies CSSProperties,
   snippet: {
     margin: 0,
     padding: "10px 12px",

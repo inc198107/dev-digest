@@ -32,7 +32,7 @@ export function useConventions(repoId: string | null | undefined) {
 }
 
 /**
- * Scan the repo (two model calls; takes up to a minute). The result replaces the cached list.
+ * Scan the repo (one model call; takes up to a minute or two). The result replaces the cached list.
  * @param repoId Repository id.
  * @returns The scan mutation.
  */

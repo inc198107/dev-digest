@@ -158,6 +158,7 @@ export class SkillsRepository implements SkillsStore, AgentSkillsReader {
           body: input.body,
           enabled: input.enabled ?? true,
           version,
+          evidenceFiles: input.evidence_files ?? null,
         })
         .returning(),
     );

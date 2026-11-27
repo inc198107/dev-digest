@@ -74,6 +74,7 @@ flowchart TB
   subgraph Agents["Agents & Skills Lab"]
     agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
     skills["skills<br/>/skills · /skills/:id · /skills/:id/versions(/:version/restore)<br/>/skills/import/(file|url) (preview only)"]
+    conventions["conventions<br/>/repos/:id/conventions(/extract|/accepted) · /conventions/:id"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -140,6 +141,14 @@ What the reviewer actually sends to the model is assembled in
   only preview: the zip reader unpacks the `SKILL.md` core in memory under a byte cap,
   lists every other entry (scripts as `executable`) and never writes or runs one; the
   URL fetcher is https-only with an SSRF guard at connect time. See `../specs/skills.md`.
+- **Conventions are grounded like findings.** `POST /repos/:id/conventions/extract` runs
+  inside the request (two model calls, rate-limited): repo-intel's `getConventionSamples`
+  gives the candidate files, the model picks some (`ConventionFileSelection`), only sampled
+  paths are read from the clone, and every rule the model reports (`ConventionExtraction`)
+  must cite lines of a file it was shown; the server cuts the snippet from that file itself.
+  The model comes from Settings → Feature models → Conventions. A re-scan keeps accepted
+  conventions. "Create skill" saves through `POST /skills` (`source: extracted`,
+  `evidence_files`). See `../specs/conventions.md`.
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.

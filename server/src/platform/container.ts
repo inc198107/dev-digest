@@ -5,6 +5,7 @@ import type {
   GitClient,
   CodeIndex,
   Embedder,
+  FeatureModelId,
   LLMProvider,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
@@ -29,6 +30,10 @@ import { DrizzleSkillsUnitOfWork, SkillsRepository } from '../modules/skills/rep
 import type { ArchiveReader, SkillsUnitOfWork, TextFetcher } from '../modules/skills/ports.js';
 import { SkillPromptBlocks } from '../modules/skills/service.js';
 import type { SkillsForAgent } from '../modules/skills/types.js';
+import { ConventionsRepository, DrizzleConventionsUnitOfWork } from '../modules/conventions/repository.js';
+import type { ConventionsUnitOfWork, RepoSources } from '../modules/conventions/ports.js';
+import { RepoRepository } from '../modules/repos/repository.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -91,6 +96,10 @@ export class Container {
   private _skillArchive?: ArchiveReader;
   private _skillFetcher?: TextFetcher;
   private _skillsForAgent?: SkillsForAgent;
+  private _reposRepo?: RepoRepository;
+  private _conventionsRepo?: ConventionsRepository;
+  private _conventionsUow?: ConventionsUnitOfWork;
+  private _conventionSources?: RepoSources;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -147,6 +156,37 @@ export class Container {
    */
   get skillsForAgent(): SkillsForAgent {
     return (this._skillsForAgent ??= new SkillPromptBlocks({ skills: this.skillsRepo, tokens: this.tokenizer }));
+  }
+
+  /** Repos persistence, read by other modules' ports (e.g. the conventions repo reader). */
+  get reposRepo(): RepoRepository {
+    return (this._reposRepo ??= new RepoRepository(this.db));
+  }
+
+  /** Conventions persistence (Conventions Extractor list, accept, reword, reject). */
+  get conventionsRepo(): ConventionsRepository {
+    return (this._conventionsRepo ??= new ConventionsRepository(this.db));
+  }
+
+  /** Transactions for the conventions scan (replace the pending conventions of a repo). */
+  get conventionsUow(): ConventionsUnitOfWork {
+    return (this._conventionsUow ??= new DrizzleConventionsUnitOfWork(this.db));
+  }
+
+  /**
+   * What a conventions scan reads: the repo (workspace-scoped), its repo-intel sample and its
+   * files through the git client. A file that cannot be read resolves to null.
+   */
+  get conventionSources(): RepoSources {
+    return (this._conventionSources ??= {
+      findRepo: async (workspaceId, repoId) => {
+        const row = await this.reposRepo.getById(workspaceId, repoId);
+        if (!row) return undefined;
+        return { ref: { owner: row.owner, name: row.name }, name: row.name, cloned: !!row.clonePath };
+      },
+      samplePaths: (repoId, n) => this.repoIntel.getConventionSamples(repoId, n),
+      readFile: (repo, path) => this.git.readFile(repo, path).catch(() => null),
+    });
   }
 
   get codeIndex(): CodeIndex {
@@ -239,6 +279,19 @@ export class Container {
     const key = await this.secrets.get('ANTHROPIC_API_KEY');
     if (!key) throw new ConfigError('ANTHROPIC_API_KEY is not configured');
     return new AnthropicProvider(key);
+  }
+
+  /**
+   * The provider client and model the workspace chose for a system feature (Settings → Feature
+   * models), falling back to the registry default.
+   * @param workspaceId Tenant scope.
+   * @param id Feature id.
+   * @returns The provider client and the model id.
+   * @throws ConfigError when the provider's key is not configured.
+   */
+  async featureLlm(workspaceId: string, id: FeatureModelId): Promise<{ llm: LLMProvider; model: string }> {
+    const choice = await resolveFeatureModel(this, workspaceId, id);
+    return { llm: await this.llm(choice.provider), model: choice.model };
   }
 
   async embedder(): Promise<Embedder> {

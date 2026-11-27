@@ -33,7 +33,9 @@ facade methods, routes). Server-wide rules: `../../../CLAUDE.md`.
 - `INDEXER_VERSION`: bumping it forces a full rebuild of every indexed repo on the next
   refresh (`incremental.ts` compares versions). Bump only when the stored data shape changes.
 - Facade methods not yet called by reviews (`getBlastRadius`, `getUnresolvedReferences`,
-  `getConventionSamples`, `getCriticalPaths`): reserved for later milestones (M2, M4, M6).
+  `getCriticalPaths`): reserved for later milestones (M4, M6). `getConventionSamples` is the
+  Conventions Extractor's file pool (M2, `modules/conventions`): keep its "no tests, configs,
+  migrations" filter, the extractor relies on it.
 
 ## Read when
 - You change what reviews receive → `../reviews/run-executor.ts` (buildRepoMapDigest,

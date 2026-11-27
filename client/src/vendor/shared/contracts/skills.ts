@@ -28,9 +28,12 @@ export const SkillName = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use kebab-case: lower-case letters, digits and single hyphens');
 export type SkillName = z.infer<typeof SkillName>;
 
-/** Where a skill created through the API came from. */
-export const SkillCreateSource = z.enum(['manual', 'imported_file', 'imported_url']);
+/** Where a skill created through the API came from (`extracted`: merged from conventions). */
+export const SkillCreateSource = z.enum(['manual', 'imported_file', 'imported_url', 'extracted']);
 export type SkillCreateSource = z.infer<typeof SkillCreateSource>;
+
+/** Most evidence paths stored with a skill. */
+export const MAX_SKILL_EVIDENCE_FILES = 50;
 
 /** Skill body: Markdown, not blank. */
 const SkillBody = z
@@ -48,12 +51,14 @@ export const SkillCreateBody = z
     body: SkillBody,
     enabled: z.boolean().optional(),
     source: SkillCreateSource.optional(),
+    /** Repo paths the skill was derived from (`path:lines` of extracted conventions). */
+    evidence_files: z.array(z.string().trim().min(1).max(512)).max(MAX_SKILL_EVIDENCE_FILES).optional(),
   })
   .strict();
 export type SkillCreateBody = z.infer<typeof SkillCreateBody>;
 
 /** PUT /skills/:id: any subset of the editable fields, at least one. */
-export const SkillUpdateBody = SkillCreateBody.omit({ source: true })
+export const SkillUpdateBody = SkillCreateBody.omit({ source: true, evidence_files: true })
   .partial()
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, { message: 'Provide at least one field to change' });

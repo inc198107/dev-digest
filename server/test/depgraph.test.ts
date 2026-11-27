@@ -22,6 +22,7 @@ const FILES: Record<string, string> = {
   'src/not-indexed.ts': "import { b } from './b.js';\nexport const n = b;\n",
   'src/uses-dist.ts': "import { d } from '../dist/bundle.js';\nexport const u = d;\n",
   'dist/bundle.js': "import { b } from '../src/b.js';\nexport const d = b;\n",
+  'src/amd.js': "define(['./b'], function (b) { return b; });\n",
 };
 
 /** A file outside the repo, reachable only through a symlinked folder inside it. */
@@ -70,6 +71,11 @@ describe('DepCruiseGraph.buildEdges', () => {
 
   it('skips the outgoing edges of a glob-named file no indexed file imports', async () => {
     const edges = await graph.buildEdges(root, ['src/a.ts', 'app/[id]/page.tsx']);
+    expect(edges).toEqual([]);
+  });
+
+  it('ignores AMD define() dependencies (their names resolve without realpath)', async () => {
+    const edges = await graph.buildEdges(root, ['src/amd.js', 'src/b.ts']);
     expect(edges).toEqual([]);
   });
 

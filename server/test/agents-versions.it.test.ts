@@ -193,14 +193,16 @@ d('agents module (Postgres)', () => {
   }
 
   /**
-   * Create a skill that agents can link to.
+   * Create a skill that agents can link to. Names are unique per workspace (index
+   * `skills_workspace_name_uq`), so each call gets its own.
    * @param workspaceId Owner workspace.
    * @returns Its id.
    */
   async function newSkill(workspaceId: string): Promise<string> {
+    const name = `skill-${randomUUID()}`;
     const [skill] = await pg.handle.db
       .insert(t.skills)
-      .values({ workspaceId, name: 'skill', description: 'skill', type: 'custom', source: 'manual', body: 'x' })
+      .values({ workspaceId, name, description: 'skill', type: 'custom', source: 'manual', body: 'x' })
       .returning();
     return skill!.id;
   }

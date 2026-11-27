@@ -31,8 +31,11 @@ model. `review/run.ts` orchestrates the run (single-pass by default).
 The engine also accepts optional prompt slots the **later milestones** start
 feeding it — `skills` (M2), `memory` (M7), `specs` (M5), `callers` — plus a
 `reduce()`/map-reduce path and a `toReview()` CI payload helper used from M6.
-In the starter the server passes only the diff, system prompt, and repo map; the
-extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
+The server passes the diff, system prompt, repo map, callers and, since the Skills
+Lab (M2), `skills`: one formatted block per enabled linked skill, already resolved
+and ordered by the server (`server/src/modules/skills`). The engine does not read
+skill rows or slugs; it only places the given strings under `## Skills / rules`.
+Slots left empty are omitted, so `assemblePrompt` simply leaves those sections out.
 
 ## Public API
 

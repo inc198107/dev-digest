@@ -22,8 +22,9 @@ import { verifyCommit } from './lib/verdict.mjs';
 
 /** Text appended to every block message for the agent. */
 const AGENT_HINT =
-  'Run the pr-self-review skill (/pr-self-review), fix every critical finding and re-run it ' +
-  '(--incremental after fixes), then retry. Do not work around this gate: only the user may ' +
+  'Ask the user to run /pr-self-review (the skill is manual-only: disable-model-invocation), ' +
+  'fix every critical finding and have it re-run (--incremental after fixes), then retry. ' +
+  'Do not work around this gate: only the user may ' +
   'override it, by waiving a finding explicitly or running the command themselves.';
 
 /**

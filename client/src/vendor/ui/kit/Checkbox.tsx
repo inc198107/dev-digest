@@ -1,15 +1,21 @@
 import React from "react";
 import { Icon } from "../icons";
 
-/** REAL controlled checkbox (styled). */
+/**
+ * REAL controlled checkbox (styled).
+ * @param props.ariaLabel Accessible name when no visible `label` names the checkbox (e.g. one
+ *   checkbox per list row).
+ */
 export function Checkbox({
   checked,
   onChange,
   label,
+  ariaLabel,
 }: {
   checked: boolean;
   onChange?: (v: boolean) => void;
   label?: React.ReactNode;
+  ariaLabel?: string;
 }) {
   return (
     <label
@@ -26,6 +32,7 @@ export function Checkbox({
         type="button"
         role="checkbox"
         aria-checked={checked}
+        aria-label={ariaLabel}
         onClick={() => onChange?.(!checked)}
         style={{
           width: 16,

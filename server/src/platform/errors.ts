@@ -39,3 +39,14 @@ export class ConfigError extends AppError {
     super('config_error', message, 500, details);
   }
 }
+
+/** The request clashes with existing state, e.g. a name that must be unique is taken. */
+export class ConflictError extends AppError {
+  /**
+   * @param message What clashes, for the user.
+   * @param details Structured context (e.g. the conflicting field).
+   */
+  constructor(message = 'Conflict', details?: unknown) {
+    super('conflict', message, 409, details);
+  }
+}

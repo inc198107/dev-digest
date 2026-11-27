@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import type { SkillBlock } from '../skills/types.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -183,6 +184,9 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      /** Skills Lab: the agent's enabled linked skills, in link order, one prompt block each. */
+      const skillBlocks = await this.loadSkills(workspaceId, agent.id, runLog);
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -203,6 +207,8 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        /** Skill blocks go under `## Skills / rules` (user message); omitted when none. */
+        ...(skillBlocks.length > 0 ? { skills: skillBlocks.map((b) => b.text) } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -270,7 +276,7 @@ export class ReviewRunExecutor {
           findings: findingRows.length,
           grounding,
         },
-        prompt_assembly: outcome.assembly,
+        prompt_assembly: { ...outcome.assembly, skill_blocks: skillBlocks },
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,
@@ -356,6 +362,31 @@ export class ReviewRunExecutor {
     }
     runLog.info(`callers digest: ${rows.length} caller signature(s) attached`);
     return out.join('\n');
+  }
+
+  /**
+   * Resolve the skills of this agent's prompt and log each one as its own line, so the
+   * Live Log and the persisted trace show exactly which skills (and how many tokens) a run
+   * received. Disabled or unlinked skills never appear.
+   * @param workspaceId Tenant scope.
+   * @param agentId The reviewing agent.
+   * @param runLog This run's logger.
+   * @returns The skill blocks, in link order ([] when none are linked and enabled).
+   */
+  private async loadSkills(workspaceId: string, agentId: string, runLog: RunLogger): Promise<SkillBlock[]> {
+    const blocks = await runLog.step('Loading skills', () =>
+      this.container.skillsForAgent.forAgent(workspaceId, agentId),
+    );
+    for (const block of blocks) {
+      runLog.info(`Skill loaded: ${block.name} v${block.version} (+${block.tokens} tokens)`);
+    }
+    const tokens = blocks.reduce((sum, b) => sum + b.tokens, 0);
+    runLog.info(
+      blocks.length > 0
+        ? `Skills: ${blocks.length} attached, +${tokens} prompt tokens`
+        : 'Skills: none enabled for this agent',
+    );
+    return blocks;
   }
 
   /**

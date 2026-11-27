@@ -16,6 +16,8 @@
 
 ## Tool & Library Notes
 <!-- Dependency quirks: versions, flags, platform issues. -->
+- 2026-11-27 · agent-browser 0.45 on Windows (`run.ts` `execFile`) · Run the suite with `AGENT_BROWSER_BIN="C:/Users/<you>/AppData/Roaming/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe"` — `execFile("agent-browser")` cannot start the npm `.cmd` shim and every step fails with `spawn agent-browser ENOENT`; `agent-browser install` (Chrome for Testing 158, ~205 MB) is still needed once.
+- 2026-11-27 · agent-browser 0.45 locators, specs 02/04/05/08 · Write `wait --text` against the rendered text and click only elements with a role: CSS `text-transform: uppercase` makes `wait --text Cost` fail on the `COST` header, and `find text "<PR title>" click` reports "No element found" on the non-semantic PR row `div`, while a `role=button` card (`SkillCard`) and `find role button click --name …` work. Flows 02/04/05 fail this way on a clean `HEAD` (76b40cf) too, so CI's unpinned `npm i -g agent-browser` breaks them as well.
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
@@ -23,6 +25,7 @@
 
 ## Session Notes
 <!-- Dated session summaries: what was done, what was learned. -->
+- 2026-11-27 · Skills Lab (spec `specs/skills.md`) · Added `08-skills` (skills grid → side preview → editor: linked agent + version history); it passes in `./scripts/e2e.sh` (5/8 overall, the 3 failures are the pre-existing agent-browser 0.45 issue above). The drawer's "Used by" link was not clickable via `find text` either, so the flow reaches the agent link from the editor text instead. (replaces 2026-11-27 Open Question: the flow was run this session)
 
 ## Open Questions
 <!-- What is still unclear. -->

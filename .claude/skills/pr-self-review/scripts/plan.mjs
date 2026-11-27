@@ -9,7 +9,9 @@
  *
  *   --base <ref>     compare with this ref instead of origin/main (falls back to main)
  *   --incremental    review only files changed since this branch's last verdict and carry the
- *                    earlier findings of unchanged files over (use after fixing findings)
+ *                    earlier findings of unchanged files over (use after fixing findings). A lane
+ *                    whose files did not change gets no subagent; it is listed under
+ *                    `incremental.skipped` with the number of its carried findings.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -63,7 +65,10 @@ const fingerprint = Object.fromEntries(files.map((f) => [f.path, f.blob]));
 let reviewFiles = files;
 /** @type {import('./lib/verdict.mjs').Finding[]} */
 let carried = [];
-/** @type {{ fromRun: string, unchanged: number } | { refused: string } | null} */
+/**
+ * @type {{ fromRun: string, unchanged: number, skipped?: { skill: string, files: number, carried: number }[] }
+ *   | { refused: string } | null}
+ */
 let incremental = null;
 if (opts.incremental) {
   const prev = readVerdict(root, branch);
@@ -81,6 +86,20 @@ if (opts.incremental) {
 
 const skills = discoverSkills(root);
 const { lanes, unroutedSkills, missingSkills, uncoveredFiles } = buildLanes(reviewFiles, routing, skills);
+if (incremental && 'fromRun' in incremental) {
+  /** Lanes the whole change routes to that get no subagent now: none of their files changed. */
+  const planned = new Set(lanes.map((l) => l.skill));
+  /** @type {Map<string, number>} */
+  const skippedFiles = new Map();
+  for (const lane of buildLanes(files, routing, skills).lanes) {
+    if (!planned.has(lane.skill)) skippedFiles.set(lane.skill, (skippedFiles.get(lane.skill) ?? 0) + lane.files.length);
+  }
+  incremental.skipped = [...skippedFiles].map(([skill, count]) => ({
+    skill,
+    files: count,
+    carried: carried.filter((f) => f.skill === skill).length,
+  }));
+}
 const checks = selectChecks(files, routing.checks);
 
 const runId = newRunId();

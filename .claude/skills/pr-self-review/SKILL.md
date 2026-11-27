@@ -2,6 +2,7 @@
 name: pr-self-review
 description: Self-reviews every local change of the current branch before a pull request is opened — commits since main plus staged, unstaged and untracked files — by routing each changed file to the project skills that own it (UI skills on client/ files, onion/Fastify/Drizzle/Postgres skills on server/ and reviewer-core/ files, security, zod and the CLAUDE.md rules across both), one subagent per skill, plus onion boundary checks, typecheck and unit tests of the touched packages. Records a PASS/BLOCK verdict; any unwaived critical finding blocks `gh pr create`, `gh pr merge` and `git push` through the gate hooks. Use before opening or updating a PR, when the pr-self-review gate blocks a command, or when the user asks to self-review, pre-review or check changes before a PR ("self review", "review my changes before PR", "перевір зміни перед PR", "проверь изменения перед PR").
 argument-hint: "[--base <ref>] [--incremental]"
+disable-model-invocation: true
 metadata:
   version: "1.1.0"
 ---
@@ -41,8 +42,9 @@ All paths below are relative to the repo root; scripts live in `.claude/skills/p
 1. If `git config core.hooksPath` is not `.githooks`, tell the user the push gate is not
    installed and offer `node .claude/skills/pr-self-review/scripts/install-hooks.mjs`.
 2. Run `node .claude/skills/pr-self-review/scripts/plan.mjs` (add `--base <ref>` if the user
-   names another base; add `--incremental` when re-reviewing after fixing findings of the last
-   run on this branch). It prints the plan and writes `plan.json` to `runDir`.
+   names another base). A re-review after fixing findings of the last run on this branch is
+   **always** `--incremental`, never a full run. It prints the plan and writes `plan.json` to
+   `runDir`.
 3. Read the printed plan:
    - `counts.files` is 0 → write `[]` to `<runDir>/findings.json`, run `record.mjs` (step 4) and
      report PASS: nothing to review.
@@ -52,14 +54,19 @@ All paths below are relative to the repo root; scripts live in `.claude/skills/p
      files, and at the end propose a `routing.json` entry to the user (do not edit it silently).
    - `missingSkills`: routed skills whose folder is gone. Mention them in the report.
    - `incremental.refused`: the incremental run fell back to a full review; say why.
+   - `incremental.skipped`: lanes that get no subagent this time because none of their files
+     changed since the last verdict. Whatever they found stays as carried findings, and a lane
+     that found nothing stays clean. Do **not** start them by hand to re-check fixes made in
+     other areas; name them in the report as "not re-run (no changes in their files)".
 
 ## 2. Run the checks and the reviewers
 
 1. Start `node .claude/skills/pr-self-review/scripts/run-checks.mjs <runDir>` with
    `run_in_background` when `plan.checks` is not empty. It writes `checks.json`.
-2. In **one message**, start one `general-purpose` subagent per lane (all lanes in parallel).
-   Build each prompt from [references/reviewer-prompt.md](references/reviewer-prompt.md),
-   filling in the lane's skill, skill file, base SHA and file list. Each returns a JSON array.
+2. Start one `general-purpose` subagent per lane, **at most 5 at a time**: launch the first 5,
+   then start the next pending lane each time one finishes, until every lane has run. Build
+   each prompt from [references/reviewer-prompt.md](references/reviewer-prompt.md), filling in
+   the lane's skill, skill file, base SHA and file list. Each returns a JSON array.
 3. Do not review lanes yourself while they run; wait for them. Do not edit any file in the
    working tree until `record.mjs` has run: an edit makes the run unrecordable.
 4. A failed check on files outside the change is often a known failure: look for it in the
@@ -127,6 +134,9 @@ never the goal. The gate needs only no unwaived critical.
 
 1. **One fix round, one re-review.** Fix what the user asked for (by default: critical and
    major), then run `plan.mjs --incremental` once.
+   - The re-review runs only the lanes whose files changed (`incremental.skipped` lists the
+     others). A lane that found nothing and whose files you did not touch is done: never re-run
+     it to double-check edits made in other lanes' files.
 2. **After that re-review, fix only** critical findings and regressions: findings of major or
    above that your own fixes introduced. Do not start another round for new minor or nit
    findings; list them for the user and let them choose.

@@ -25,11 +25,17 @@ import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository, DrizzleAgentsUnitOfWork } from '../modules/agents/repository.js';
 import type { AgentsUnitOfWork } from '../modules/agents/ports.js';
+import { DrizzleSkillsUnitOfWork, SkillsRepository } from '../modules/skills/repository.js';
+import type { ArchiveReader, SkillsUnitOfWork, TextFetcher } from '../modules/skills/ports.js';
+import { SkillPromptBlocks } from '../modules/skills/service.js';
+import type { SkillsForAgent } from '../modules/skills/types.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
+import { FflateZipReader } from '../adapters/archive/zip.js';
+import { HttpsTextFetcher } from '../adapters/web/text-fetcher.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -52,6 +58,8 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Downloader of the skill URL import — tests inject a fake (no network). */
+  skillFetcher?: TextFetcher;
 }
 
 export class Container {
@@ -78,6 +86,11 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _skillsRepo?: SkillsRepository;
+  private _skillsUow?: SkillsUnitOfWork;
+  private _skillArchive?: ArchiveReader;
+  private _skillFetcher?: TextFetcher;
+  private _skillsForAgent?: SkillsForAgent;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -107,6 +120,35 @@ export class Container {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
 
+  /** Skills persistence (Skills Lab CRUD, "used by", an agent's enabled skills). */
+  get skillsRepo(): SkillsRepository {
+    return (this._skillsRepo ??= new SkillsRepository(this.db));
+  }
+
+  /** Transactions for the skills use cases (insert/update + body snapshot). */
+  get skillsUow(): SkillsUnitOfWork {
+    return (this._skillsUow ??= new DrizzleSkillsUnitOfWork(this.db));
+  }
+
+  /** In-memory zip reader of the skill import (never writes or runs an entry). */
+  get skillArchive(): ArchiveReader {
+    return (this._skillArchive ??= new FflateZipReader());
+  }
+
+  /** SSRF-guarded https downloader of the skill URL import. */
+  get skillFetcher(): TextFetcher {
+    if (this.overrides.skillFetcher) return this.overrides.skillFetcher;
+    return (this._skillFetcher ??= new HttpsTextFetcher());
+  }
+
+  /**
+   * Skills facade for the reviews module: the enabled linked skills of an agent as prompt
+   * blocks with token counts.
+   */
+  get skillsForAgent(): SkillsForAgent {
+    return (this._skillsForAgent ??= new SkillPromptBlocks({ skills: this.skillsRepo, tokens: this.tokenizer }));
+  }
+
   get codeIndex(): CodeIndex {
     if (this.overrides.codeIndex) return this.overrides.codeIndex;
     this._codeIndex ??= new RipgrepCodeIndex(this.git);
@@ -131,7 +173,7 @@ export class Container {
     return this._depgraph;
   }
 
-  /** Token counter (js-tiktoken) for the repo-map budget search. */
+  /** Token counter (js-tiktoken): repo-map budget search and skill block token counts. */
   get tokenizer(): Tokenizer {
     if (this.overrides.tokenizer) return this.overrides.tokenizer;
     this._tokenizer ??= new TiktokenTokenizer();

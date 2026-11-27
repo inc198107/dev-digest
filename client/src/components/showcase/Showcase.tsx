@@ -161,6 +161,9 @@ export function Gallery() {
         <div style={s.w420}>
           <Markdown>{"A finding with **bold**, `inline code`, and a [link](https://example.com).\n\n- one\n- two"}</Markdown>
         </div>
+        <div style={s.w420}>
+          <Markdown doc>{"### Skill: untested-branches\n> Flag untested branches.\n\n## Procedure\n1. List decision points\n2. Map them to tests\n\n```ts\nif (a <= 0) throw new RangeError();\n```"}</Markdown>
+        </div>
       </Group>
 
       <Group title="Form controls (real, controlled)">

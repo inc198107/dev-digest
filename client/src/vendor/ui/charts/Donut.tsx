@@ -8,16 +8,27 @@ export interface DonutSegment {
   color: string;
 }
 
+/**
+ * Ring chart with a legend of the segment values.
+ * @param props.segments Label, value and colour of each slice.
+ * @param props.size Diameter (px).
+ * @param props.stroke Ring thickness (px).
+ * @param props.valuePrefix Prefix of a legend value (default `$`, amounts with two decimals).
+ * @param props.formatValue Formats a legend value instead (e.g. counts: `String`); overrides the prefix.
+ * @returns The chart and its legend.
+ */
 export function Donut({
   segments,
   size = 130,
   stroke = 22,
   valuePrefix = "$",
+  formatValue,
 }: {
   segments: DonutSegment[];
   size?: number;
   stroke?: number;
   valuePrefix?: string;
+  formatValue?: (value: number) => string;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
@@ -46,8 +57,7 @@ export function Donut({
             <span style={{ width: 9, height: 9, borderRadius: 2, background: s.color }} />
             <span style={{ color: "var(--text-secondary)", flex: 1 }}>{s.label}</span>
             <span className="mono tnum" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-              {valuePrefix}
-              {s.value.toFixed(2)}
+              {formatValue ? formatValue(s.value) : `${valuePrefix}${s.value.toFixed(2)}`}
             </span>
           </div>
         ))}

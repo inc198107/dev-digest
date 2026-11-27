@@ -18,10 +18,22 @@ import { s } from "./styles";
  * built and confirm. Nothing is stored before "Save skill"; the server only reads the skill
  * core and never runs anything from a package.
  * @param props.source Import from an uploaded file or from an https URL.
- * @param props.onClose Close the modal.
+ * @param props.initialUrl URL to import (community search): prefilled and previewed at once.
+ * @param props.onClose Close the modal without saving.
+ * @param props.onSaved Called after the skill was saved, before the editor opens; defaults to `onClose`.
  * @returns The modal.
  */
-export function ImportSkillModal({ source, onClose }: { source: "file" | "url"; onClose: () => void }) {
+export function ImportSkillModal({
+  source,
+  initialUrl,
+  onClose,
+  onSaved,
+}: {
+  source: "file" | "url";
+  initialUrl?: string;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
   const t = useTranslations("skills");
   const router = useRouter();
   const toast = useToast();
@@ -29,14 +41,18 @@ export function ImportSkillModal({ source, onClose }: { source: "file" | "url"; 
   const create = useCreateSkill();
   const fileInput = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
-  const [url, setUrl] = React.useState("");
+  const [url, setUrl] = React.useState(initialUrl ?? "");
   const [error, setError] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<SkillImportPreview | null>(null);
   const [value, setValue] = React.useState<SkillFormValue | null>(null);
 
   const canPreview = source === "file" ? file !== null : url.trim().length > 0;
 
-  const runPreview = async () => {
+  /**
+   * Ask the server for the preview of the chosen file or of the URL.
+   * @param urlOverride URL to preview instead of the field's value (the initial URL on open).
+   */
+  const runPreview = async (urlOverride?: string) => {
     setError(null);
     try {
       let result: SkillImportPreview;
@@ -55,7 +71,7 @@ export function ImportSkillModal({ source, onClose }: { source: "file" | "url"; 
         }
         result = await previewMutation.mutateAsync({ kind: "file", filename: file.name, content_base64: content });
       } else {
-        result = await previewMutation.mutateAsync({ kind: "url", url: url.trim() });
+        result = await previewMutation.mutateAsync({ kind: "url", url: (urlOverride ?? url).trim() });
       }
       setPreview(result);
       setValue(toFormValue(result));
@@ -63,6 +79,19 @@ export function ImportSkillModal({ source, onClose }: { source: "file" | "url"; 
       setError(err instanceof Error ? err.message : t("import.readFailed"));
     }
   };
+
+  /**
+   * A URL handed over by the community search is previewed as soon as the modal opens, exactly
+   * as if the user had pasted it and pressed "Preview". The ref keeps a Strict Mode re-run of the
+   * effect from asking twice; `runPreview` is left out of the dependencies on purpose (it is
+   * recreated on every render, and the preview must start only once, on open).
+   */
+  const autoPreviewed = React.useRef(false);
+  React.useEffect(() => {
+    if (source !== "url" || !initialUrl || autoPreviewed.current) return;
+    autoPreviewed.current = true;
+    void runPreview(initialUrl);
+  }, [source, initialUrl]);
 
   const save = async () => {
     if (!preview || !value) return;
@@ -75,7 +104,7 @@ export function ImportSkillModal({ source, onClose }: { source: "file" | "url"; 
         source: preview.source,
       });
       toast.success(t("import.saved", { name: skill.name }));
-      onClose();
+      (onSaved ?? onClose)();
       router.push(`/skills/${skill.id}?tab=config`);
     } catch {
       /** The global mutation handler already shows the API error as a toast. */
@@ -103,7 +132,7 @@ export function ImportSkillModal({ source, onClose }: { source: "file" | "url"; 
         <Button kind="ghost" onClick={onClose}>
           {t("import.cancel")}
         </Button>
-        <Button kind="primary" icon="Eye" onClick={runPreview} disabled={!canPreview || previewMutation.isPending}>
+        <Button kind="primary" icon="Eye" onClick={() => runPreview()} disabled={!canPreview || previewMutation.isPending}>
           {previewMutation.isPending ? t("import.previewing") : t("import.preview")}
         </Button>
       </div>

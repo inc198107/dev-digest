@@ -6,7 +6,8 @@ import { Button, Dropdown } from "@devdigest/ui";
 import type { AddSkillMode } from "./types";
 
 /**
- * The "Add skill" button: create from scratch, import from a file, import from a URL.
+ * The "Add skill" button: import from a file or a URL, search community skills, create from
+ * scratch.
  * @param props.onSelect Receives the chosen way of adding a skill.
  * @param props.compact Smaller label for the editor's side list.
  * @returns The dropdown.
@@ -25,6 +26,7 @@ export function AddSkillMenu({ onSelect, compact = false }: { onSelect: (mode: A
       items={[
         { label: t("menu.fromFile"), icon: "Upload", onClick: () => onSelect("file") },
         { label: t("menu.fromUrl"), icon: "Link", onClick: () => onSelect("url") },
+        { label: t("menu.community"), icon: "Globe", onClick: () => onSelect("community") },
         { divider: true },
         { label: t("menu.create"), icon: "Edit", onClick: () => onSelect("create") },
       ]}

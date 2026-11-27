@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, FormField, Icon, Modal, TextInput, Toggle } from "@devdigest/ui";
 import type { ConventionCandidate } from "@devdigest/shared";
+import { SkillBodyEditor } from "@/components/skill-body-editor";
 import { useCreateSkill } from "@/lib/hooks/skills";
 import { estimateTokens, formatSkillBlock } from "@/lib/skill-block";
 import { useToast } from "@/lib/toast";
 import { buildSkillDraft } from "../../_lib/build-skill-draft";
 import { MAX_BODY_CHARS, MODAL_WIDTH } from "./constants";
 import { canSave, formProblems, type SkillForm } from "./helpers";
-import { SkillBodyEditor } from "./_components/SkillBodyEditor";
 import { s } from "./styles";
 
 /**
@@ -148,9 +148,9 @@ export function CreateSkillModal({
             fileName={`${form.name.trim() || draft.name}.md`}
             value={form.body}
             onChange={(body) => set({ body })}
-            unsavedLabel={t("unsaved")}
             tokensLabel={t("tokens", { count: tokens })}
             label={t("body")}
+            unsaved
           />
           {problems.body === "tooLong" && (
             <div role="alert" style={s.error}>

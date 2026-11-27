@@ -15,6 +15,7 @@ export const s = {
   } satisfies CSSProperties,
   actions: { display: "flex", gap: 10, marginTop: 4, alignItems: "center" } satisfies CSSProperties,
   versionNote: { marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  noteCount: { fontSize: 11.5, color: "var(--text-muted)" } satisfies CSSProperties,
   danger: {
     display: "flex",
     alignItems: "center",

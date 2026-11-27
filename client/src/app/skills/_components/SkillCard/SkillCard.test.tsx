@@ -64,6 +64,27 @@ describe("SkillCard", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it("the footer adds the pull frequency and accept rate from the stats", () => {
+    renderWithIntl(
+      <SkillCard skill={SKILL} stats={{ skill_id: "s1", used_by: 1, pull_frequency: 0.714, accept_rate: 0.736 }} />,
+    );
+    expect(screen.getByText("1 agent")).toBeInTheDocument();
+    expect(screen.getByText("71% pull")).toBeInTheDocument();
+    expect(screen.getByText("74% accept")).toBeInTheDocument();
+    expect(screen.getByText("v3")).toBeInTheDocument();
+  });
+
+  it("shows a dash for a rate without data and no rates before the stats load", () => {
+    const { unmount } = renderWithIntl(
+      <SkillCard skill={SKILL} stats={{ skill_id: "s1", used_by: 1, pull_frequency: null, accept_rate: null }} />,
+    );
+    expect(screen.getByText("— pull")).toBeInTheDocument();
+    expect(screen.getByText("— accept")).toBeInTheDocument();
+    unmount();
+    renderWithIntl(<SkillCard skill={SKILL} />);
+    expect(screen.queryByText(/pull/)).toBeNull();
+  });
+
   it("an unlinked skill says so", () => {
     renderWithIntl(<SkillCard skill={{ ...SKILL, used_by: [] }} />);
     expect(screen.getByText("not linked")).toBeInTheDocument();

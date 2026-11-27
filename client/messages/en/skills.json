@@ -17,7 +17,8 @@
   "menu": {
     "create": "Create from scratch",
     "fromFile": "Import from file",
-    "fromUrl": "Import from URL"
+    "fromUrl": "Import from URL",
+    "community": "Search community skills…"
   },
   "type": {
     "rubric": "rubric",
@@ -35,7 +36,9 @@
   "card": {
     "usedBy": "{count, plural, =0 {not linked} one {# agent} other {# agents}}",
     "version": "v{version}",
-    "toggle": "Enable {name}"
+    "toggle": "Enable {name}",
+    "pull": "{rate} pull",
+    "accept": "{rate} accept"
   },
   "fields": {
     "name": "Name",
@@ -48,7 +51,11 @@
     "body": "Skill body (Markdown)",
     "bodyHint": "The checklist the model follows. Text only: a skill cannot run tools or scripts.",
     "bodyPlaceholder": "# Rule\n\n- What to check\n- How to report it",
-    "tokens": "≈ {count} tokens"
+    "tokens": "≈ {count} tokens",
+    "fileFallback": "skill"
+  },
+  "bodyEditor": {
+    "unsaved": "unsaved"
   },
   "drawer": {
     "subtitle": "{type} · {source} · v{version}",
@@ -68,6 +75,7 @@
     "tabs": {
       "config": "Config",
       "preview": "Preview",
+      "stats": "Stats",
       "versions": "Versions"
     }
   },
@@ -80,6 +88,9 @@
     "savedToast": "Skill saved (v{version})",
     "nextVersion": "Saving snapshots the body as v{version}.",
     "sameVersion": "Type and enabled are metadata: the skill stays at v{version}.",
+    "note": "What changed",
+    "notePlaceholder": "e.g. Flag empty arrays as a boundary case",
+    "noteHint": "Optional. Titles v{version} in the version history; the model never sees it.",
     "deleteTitle": "Delete skill",
     "deleteBody": "Removes it from every agent that links it. This can't be undone.",
     "deleteUsedBy": "{count, plural, one {Linked to # agent} other {Linked to # agents}}: {names}.",
@@ -92,6 +103,28 @@
     "title": "Preview",
     "subtitle": "Rendered as the reviewing agent receives it, under “## Skills / rules” in the user message."
   },
+  "stats": {
+    "title": "Usage",
+    "subtitle": "Last 30 days of review runs in this workspace.",
+    "loadError": "Could not load the stats.",
+    "usedBy": "Used by",
+    "agentsSuffix": "{count, plural, one {agent} other {agents}}",
+    "pullFrequency": "Pull frequency",
+    "pullSub": "{skillRuns} of {runs, plural, one {# review run} other {# review runs}}",
+    "acceptRate": "Accept rate",
+    "acceptSub": "of accepted + dismissed findings",
+    "findings": "Findings (30d)",
+    "findingsSub": "in the runs that loaded it",
+    "agentsTitle": "Agents using this skill",
+    "agentsEmpty": "Not linked to any agent yet.",
+    "open": "Open",
+    "openAgent": "Open {name}",
+    "categoriesTitle": "Findings by category",
+    "categoriesEmpty": "These runs produced no findings.",
+    "emptyTitle": "No review run loaded this skill yet",
+    "emptyBody": "In the last 30 days no run had it in its prompt. Link it to an agent, keep it enabled and run a review: the numbers appear here.",
+    "footnote": "Findings belong to the whole review run that loaded the skill: a run with several skills counts its findings for each of them."
+  },
   "versions": {
     "title": "Version history",
     "count": "{count, plural, one {# version} other {# versions}}",
@@ -101,7 +134,12 @@
     "restore": "Restore",
     "restored": "Restored v{from} as v{version}",
     "empty": "No versions recorded yet.",
-    "viewTitle": "{name} · v{version}"
+    "viewTitle": "{name} · v{version}",
+    "diff": "Diff",
+    "diffLabel": "Diff v{version} against v{previous}",
+    "diffFrom": "Changes from v{version}",
+    "diffSame": "The body is the same as in v{version}: this version changed the name or description.",
+    "diffSkipped": "{count, plural, one {# unchanged line} other {# unchanged lines}}"
   },
   "create": {
     "title": "Create skill",
@@ -143,5 +181,27 @@
       "not_skill_core": "not the skill core — ignored"
     },
     "warnings": "Check before saving"
+  },
+  "community": {
+    "title": "Search community skills",
+    "subtitle": "Import skills from public repos: every import is previewed and saved only after you confirm.",
+    "searchLabel": "Search community skills",
+    "placeholder": "Search SKILL.md files on GitHub…",
+    "clear": "Clear search",
+    "allLanguages": "All languages",
+    "tags": {
+      "security": "security",
+      "performance": "performance",
+      "testing": "testing"
+    },
+    "hint": "Type at least 2 characters or pick a tag to search public GitHub repos for SKILL.md files.",
+    "searching": "Searching…",
+    "error": "Community search failed.",
+    "notConfigured": "Community search needs a GitHub token. Add one in <link>Settings → API keys</link>.",
+    "noResults": "No SKILL.md found for “{q}”.",
+    "resultsLabel": "Community skills",
+    "stars": "{count, plural, one {# star} other {# stars}}",
+    "import": "Import",
+    "importLabel": "Import {name} from {repo}"
   }
 }

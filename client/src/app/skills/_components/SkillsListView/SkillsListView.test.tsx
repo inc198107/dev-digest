@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { SkillListItem } from "@devdigest/shared";
+import type { SkillListItem, SkillStatsSummary } from "@devdigest/shared";
 import skillsMessages from "../../../../../messages/en/skills.json";
 import shellMessages from "../../../../../messages/en/shell.json";
 import { ToastProvider } from "../../../../lib/toast";
@@ -36,6 +36,11 @@ const SKILLS: SkillListItem[] = [
   },
 ];
 
+const STATS: SkillStatsSummary[] = [
+  { skill_id: "s1", used_by: 1, pull_frequency: 0.71, accept_rate: 0.74 },
+  { skill_id: "s2", used_by: 0, pull_frequency: 0, accept_rate: null },
+];
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
   usePathname: () => "/skills",
@@ -46,6 +51,8 @@ vi.mock("../../../../components/app-shell", () => ({
 }));
 vi.mock("../../../../lib/hooks/skills", () => ({
   useSkills: () => ({ data: SKILLS, isLoading: false, isError: false }),
+  useSkillStatsSummary: () => ({ data: STATS }),
+  useCommunitySkillSearch: () => ({ data: undefined, isError: false, isFetching: false }),
   useUpdateSkill: () => ({ mutate: updateMutate }),
   useCreateSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useImportSkillPreview: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -79,6 +86,14 @@ describe("Skills list", () => {
     expect(screen.getByText("No skill matches “zzz”.")).toBeInTheDocument();
   });
 
+  it("each card shows how often runs pulled the skill and how many of its findings were accepted", () => {
+    renderView();
+    expect(screen.getByText("71% pull")).toBeInTheDocument();
+    expect(screen.getByText("74% accept")).toBeInTheDocument();
+    expect(screen.getByText("0% pull")).toBeInTheDocument();
+    expect(screen.getByText("— accept")).toBeInTheDocument();
+  });
+
   it("a click opens the side preview with its users and the block the agent receives", () => {
     renderView();
     fireEvent.click(screen.getByText("untested-branches"));
@@ -95,12 +110,21 @@ describe("Skills list", () => {
     expect(updateMutate).toHaveBeenCalledWith({ id: "s2", patch: { enabled: true } });
   });
 
-  it("Add skill offers create and both imports, and opens the chosen dialog", () => {
+  it("Add skill offers create, both imports and the community search, and opens the chosen dialog", () => {
     renderView();
     fireEvent.click(screen.getByText("Add skill"));
     expect(screen.getByText("Create from scratch")).toBeInTheDocument();
     expect(screen.getByText("Import from URL")).toBeInTheDocument();
+    expect(screen.getByText("Search community skills…")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Import from file"));
     expect(screen.getByText("Import skill from file")).toBeInTheDocument();
+  });
+
+  it("Search community skills… opens the community drawer", () => {
+    renderView();
+    fireEvent.click(screen.getByText("Add skill"));
+    fireEvent.click(screen.getByText("Search community skills…"));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Search community skills");
+    expect(screen.getByLabelText("Search community skills")).toBeInTheDocument();
   });
 });

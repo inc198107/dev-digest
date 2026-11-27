@@ -1,16 +1,19 @@
 /**
- * hooks/skills.ts — React Query hooks for the Skills Lab (skill CRUD, versions, import
- * preview) and an agent's linked skills (Agent editor → Skills tab).
+ * hooks/skills.ts — React Query hooks for the Skills Lab (skill CRUD, versions, usage stats,
+ * import preview, community search) and an agent's linked skills (Agent editor → Skills tab).
  */
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AgentSkillLink,
+  CommunitySkillSearchResult,
   Skill,
   SkillCreateBody,
   SkillImportPreview,
   SkillListItem,
+  SkillStats,
+  SkillStatsSummary,
   SkillUpdateBody,
   SkillVersion,
 } from "@devdigest/shared";
@@ -19,16 +22,28 @@ import { api } from "../api";
 /** Query keys of the skills hooks (one place, so invalidation cannot drift). */
 const SKILLS_ROOT = ["skills"] as const;
 const AGENT_SKILLS_ROOT = ["agent-skills"] as const;
+/** Community search lives outside the skills root: a skill edit must not re-query GitHub. */
+const COMMUNITY_ROOT = ["skill-community"] as const;
+
+/** Shortest community search text the API accepts (`CommunitySkillQuery`). */
+const MIN_COMMUNITY_QUERY_CHARS = 2;
+
+/** How long a community search result stays fresh (ms); the API caches GitHub answers too. */
+const COMMUNITY_STALE_MS = 10 * 60_000;
 
 /**
  * Query keys of the skills hooks, nested under one root, so invalidating `all` also refreshes
- * every list, detail and version history (for example a detail's `used_by` after a link changes).
+ * every list, detail, version history and usage stats (for example a detail's `used_by` or the
+ * card numbers after a link changes).
  */
 export const skillKeys = {
   all: SKILLS_ROOT,
   list: () => [...SKILLS_ROOT, "list"] as const,
   one: (id: string | null | undefined) => [...SKILLS_ROOT, "detail", id] as const,
   versions: (id: string | null | undefined) => [...SKILLS_ROOT, "versions", id] as const,
+  stats: (id: string | null | undefined) => [...SKILLS_ROOT, "stats", id] as const,
+  statsSummary: () => [...SKILLS_ROOT, "stats-summary"] as const,
+  community: (q: string) => [...COMMUNITY_ROOT, q] as const,
   agentLinksAll: AGENT_SKILLS_ROOT,
   agentLinks: (agentId: string | null | undefined) => [...AGENT_SKILLS_ROOT, agentId] as const,
 };
@@ -61,6 +76,47 @@ export function useSkillVersions(id: string | null | undefined) {
     queryKey: skillKeys.versions(id),
     queryFn: () => api.get<SkillVersion[]>(`/skills/${id}/versions`),
     enabled: !!id,
+  });
+}
+
+/**
+ * @param id Skill id.
+ * @returns How the skill was used in the last 30 days (runs that loaded it, their findings).
+ */
+export function useSkillStats(id: string | null | undefined) {
+  return useQuery({
+    queryKey: skillKeys.stats(id),
+    queryFn: () => api.get<SkillStats>(`/skills/${id}/stats`),
+    enabled: !!id,
+  });
+}
+
+/**
+ * @returns The card numbers (users, pull frequency, accept rate) of every skill of the workspace.
+ */
+export function useSkillStatsSummary() {
+  return useQuery({
+    queryKey: skillKeys.statsSummary(),
+    queryFn: () => api.get<SkillStatsSummary[]>("/skills/stats"),
+  });
+}
+
+/**
+ * Search public GitHub repositories for `SKILL.md` files. Runs only for a text of at least
+ * `MIN_COMMUNITY_QUERY_CHARS` characters and keeps the previous result while the next one loads,
+ * so the list does not flash empty while the user types.
+ * @param query The search text (debounced by the caller).
+ * @returns The search query; `data.configured` is false when no GitHub token is set.
+ */
+export function useCommunitySkillSearch(query: string) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: skillKeys.community(q),
+    queryFn: () => api.get<CommunitySkillSearchResult>(`/skills/community?q=${encodeURIComponent(q)}`),
+    enabled: q.length >= MIN_COMMUNITY_QUERY_CHARS,
+    placeholderData: keepPreviousData,
+    staleTime: COMMUNITY_STALE_MS,
+    retry: false,
   });
 }
 

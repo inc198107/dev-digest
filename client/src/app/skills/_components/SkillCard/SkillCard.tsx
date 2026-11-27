@@ -3,15 +3,18 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Toggle } from "@devdigest/ui";
-import type { SkillListItem } from "@devdigest/shared";
+import type { SkillListItem, SkillStatsSummary } from "@devdigest/shared";
 import { SkillTypeBadge, SkillTypeIcon } from "../../../../components/skill-meta";
+import { formatRate } from "../../_lib/skill-stats";
 import { SOURCE_ICON } from "./constants";
 import { s } from "./styles";
 
 /**
- * A skill in the Skills Lab: name, description, type, source, how many agents use it and the
- * workspace-wide enabled switch.
+ * A skill in the Skills Lab: name, description, type, source, how many agents use it, how often
+ * review runs loaded it and how many of its findings were accepted, and the workspace-wide
+ * enabled switch.
  * @param props.skill The skill with its users.
+ * @param props.stats Its card numbers; omitted (not loaded yet), only the users are shown.
  * @param props.active Highlight it as the selected one.
  * @param props.onClick Open it.
  * @param props.onToggle Turn it on or off for every agent; omitted, no switch is shown.
@@ -19,11 +22,13 @@ import { s } from "./styles";
  */
 export function SkillCard({
   skill,
+  stats,
   active = false,
   onClick,
   onToggle,
 }: {
   skill: SkillListItem;
+  stats?: SkillStatsSummary;
   active?: boolean;
   onClick?: () => void;
   onToggle?: (enabled: boolean) => void;
@@ -65,7 +70,17 @@ export function SkillCard({
       </div>
       <div style={s.footer}>
         <span className="tnum">{t("card.usedBy", { count: skill.used_by.length })}</span>
-        <span className="mono tnum">{t("card.version", { version: skill.version })}</span>
+        {stats && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="tnum">{t("card.pull", { rate: formatRate(stats.pull_frequency) })}</span>
+            <span aria-hidden="true">·</span>
+            <span className="tnum">{t("card.accept", { rate: formatRate(stats.accept_rate) })}</span>
+          </>
+        )}
+        <span className="mono tnum" style={s.version}>
+          {t("card.version", { version: skill.version })}
+        </span>
       </div>
     </div>
   );

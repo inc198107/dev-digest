@@ -70,6 +70,7 @@ describe("CreateSkillModal", () => {
     expect(body.value).toContain("## async-await-then-chains");
     expect(body.value).toContain("Detected in `src/lib/redis.ts:1-9`:");
     expect(screen.getByText("payments-api-conventions.md")).toBeInTheDocument();
+    expect(screen.getByText("unsaved")).toBeInTheDocument();
   });
 
   it("saves the edited skill as convention/extracted with the evidence and opens it", async () => {

@@ -3,17 +3,19 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Badge, Button, Modal, Toggle } from "@devdigest/ui";
+import { Badge, Button, FormField, Modal, TextInput, Toggle } from "@devdigest/ui";
 import type { SkillListItem } from "@devdigest/shared";
 import { useDeleteSkill, useUpdateSkill } from "../../../../../../../lib/hooks/skills";
 import { useToast } from "../../../../../../../lib/toast";
 import { isFormComplete, SkillFields, toFormValue, type SkillFormValue } from "../../../../../_components/SkillFields";
-import { bumpsVersion, changedFields, mergeStored, sameForm } from "./helpers";
+import { MAX_NOTE_CHARS } from "./constants";
+import { bumpsVersion, changedFields, mergeStored, sameForm, withNote } from "./helpers";
 import { s } from "./styles";
 
 /**
  * Config tab of the skill editor: name, directive description, type and body, the
- * workspace-wide enabled switch, save (with the version it will create) and delete. The editor
+ * workspace-wide enabled switch, save (with the version it will create and an optional "what
+ * changed" note that titles that version) and delete. The editor
  * keeps it mounted (keyed by skill id) while other tabs are shown, so a draft survives a look at
  * Preview or Versions. When the stored fields change (a save, including a type-only one, a
  * restore, an edit elsewhere) every field the user did not touch takes the stored value and the
@@ -30,6 +32,7 @@ export function ConfigTab({ skill }: { skill: SkillListItem }) {
   const original = toFormValue(skill);
   const [value, setValue] = React.useState<SkillFormValue>(original);
   const [syncedValue, setSyncedValue] = React.useState<SkillFormValue>(original);
+  const [note, setNote] = React.useState("");
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   /**
@@ -48,9 +51,19 @@ export function ConfigTab({ skill }: { skill: SkillListItem }) {
 
   const save = () =>
     update.mutate(
-      { id: skill.id, patch },
-      { onSuccess: (saved) => toast.success(t("config.savedToast", { version: saved.version })) },
+      { id: skill.id, patch: withNote(patch, note) },
+      {
+        onSuccess: (saved) => {
+          setNote("");
+          toast.success(t("config.savedToast", { version: saved.version }));
+        },
+      },
     );
+
+  const discard = () => {
+    setValue(original);
+    setNote("");
+  };
 
   const doDelete = () =>
     remove.mutate(skill.id, {
@@ -73,13 +86,33 @@ export function ConfigTab({ skill }: { skill: SkillListItem }) {
         </label>
       </div>
 
-      <SkillFields value={value} onChange={(p) => setValue((v) => ({ ...v, ...p }))} />
+      <SkillFields value={value} onChange={(p) => setValue((v) => ({ ...v, ...p }))} unsaved={dirty} />
+
+      {bump && (
+        <FormField
+          label={t("config.note")}
+          hint={t("config.noteHint", { version: skill.version + 1 })}
+          right={
+            <span className="mono tnum" style={s.noteCount}>
+              {note.length}/{MAX_NOTE_CHARS}
+            </span>
+          }
+        >
+          <TextInput
+            value={note}
+            onChange={setNote}
+            maxLength={MAX_NOTE_CHARS}
+            placeholder={t("config.notePlaceholder")}
+            aria-label={t("config.note")}
+          />
+        </FormField>
+      )}
 
       <div style={s.actions}>
         <Button kind="primary" icon="Check" onClick={save} disabled={!dirty || !isFormComplete(value) || update.isPending}>
           {update.isPending ? t("config.saving") : t("config.save")}
         </Button>
-        <Button kind="ghost" onClick={() => setValue(original)} disabled={!dirty}>
+        <Button kind="ghost" onClick={discard} disabled={!dirty}>
           {t("config.cancel")}
         </Button>
         {dirty && (

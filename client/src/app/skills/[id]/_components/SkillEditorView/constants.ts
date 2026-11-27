@@ -7,12 +7,13 @@ export interface SkillEditorTab {
   icon: IconName;
 }
 
-/** Tabs of the skill editor (Evals and Stats from the design are out of scope). */
-export type SkillTabKey = "config" | "preview" | "versions";
+/** Tabs of the skill editor (Evals from the design is out of scope). */
+export type SkillTabKey = "config" | "preview" | "stats" | "versions";
 
 export const SKILL_TABS: readonly SkillEditorTab[] = [
   { key: "config", labelKey: "editor.tabs.config", icon: "Settings" },
   { key: "preview", labelKey: "editor.tabs.preview", icon: "Eye" },
+  { key: "stats", labelKey: "editor.tabs.stats", icon: "BarChart" },
   { key: "versions", labelKey: "editor.tabs.versions", icon: "History" },
 ];
 

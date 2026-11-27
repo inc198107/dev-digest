@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
-import { useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
+import { useSkills, useSkillStatsSummary, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { AddSkillMenu, SkillDialogs, type AddSkillMode } from "../AddSkill";
 import { SkillCard } from "../SkillCard";
 import { SkillPreviewDrawer } from "./_components/SkillPreviewDrawer";
 import { filterSkills } from "../../_lib/filter-skills";
+import { indexStatsBySkill } from "../../_lib/skill-stats";
 import { s } from "./styles";
 
 /**
@@ -21,6 +22,7 @@ export function SkillsListView() {
   const t = useTranslations("skills");
   const router = useRouter();
   const { data: skills, isLoading, isError, refetch } = useSkills();
+  const { data: statsSummary } = useSkillStatsSummary();
   const update = useUpdateSkill();
   const [search, setSearch] = React.useState("");
   const [dialog, setDialog] = React.useState<AddSkillMode | null>(null);
@@ -29,6 +31,7 @@ export function SkillsListView() {
   const all = skills ?? [];
   const list = filterSkills(all, search);
   const previewed = all.find((sk) => sk.id === previewId) ?? null;
+  const statsById = indexStatsBySkill(statsSummary);
   const toggle = (id: string, enabled: boolean) => update.mutate({ id, patch: { enabled } });
 
   return (
@@ -85,6 +88,7 @@ export function SkillsListView() {
               <SkillCard
                 key={sk.id}
                 skill={sk}
+                stats={statsById.get(sk.id)}
                 active={sk.id === previewId}
                 onClick={() => setPreviewId(sk.id)}
                 onToggle={(enabled) => toggle(sk.id, enabled)}

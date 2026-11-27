@@ -237,6 +237,14 @@ export function Gallery() {
             { label: "anthropic", value: 2.1, color: "var(--ok)" },
           ]}
         />
+        <Donut
+          size={110}
+          formatValue={String}
+          segments={[
+            { label: "security", value: 48, color: "var(--crit)" },
+            { label: "bug", value: 22, color: "var(--warn)" },
+          ]}
+        />
         <div style={s.w320}>
           <BarRow label="security-agent" value={42} max={60} suffix="42" />
           <BarRow label="perf-agent" value={28} max={60} color="var(--ok)" suffix="28" />

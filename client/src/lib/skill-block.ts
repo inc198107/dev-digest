@@ -1,7 +1,23 @@
 import type { Skill } from "@devdigest/shared";
 
+/**
+ * Skill text helpers shared by the Skills Lab and the Conventions "Create skill" modal: the prompt
+ * block format, a token estimate and the name rule of the API.
+ */
+
 /** The skill fields the model sees. */
 export type SkillBlockFields = Pick<Skill, "name" | "description" | "body">;
+
+/** Kebab-case, as the API's `SkillName` requires. */
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * @param name A skill name (trimmed by the caller or not).
+ * @returns True when it is kebab-case, as the API requires.
+ */
+export function isSkillName(name: string): boolean {
+  return SKILL_NAME_PATTERN.test(name.trim());
+}
 
 /**
  * Render a skill as the block an agent's prompt receives. Mirrors `formatSkillBlock` in

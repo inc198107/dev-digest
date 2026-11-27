@@ -60,7 +60,7 @@ export function planSkillVersion(
 /**
  * Render a skill as the block appended to an agent's prompt: the name as a heading, the
  * description (the skill's interface) as a quote line, then the body. The client's preview
- * mirrors this format (`client/src/app/skills/_lib/skill-block.ts`).
+ * mirrors this format (`client/src/lib/skill-block.ts`).
  * @param skill The model-visible fields.
  * @returns The Markdown block.
  */

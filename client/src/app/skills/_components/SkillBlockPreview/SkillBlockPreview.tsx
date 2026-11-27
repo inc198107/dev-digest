@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Markdown } from "@devdigest/ui";
-import { formatSkillBlock, type SkillBlockFields } from "./helpers";
+import { formatSkillBlock, type SkillBlockFields } from "@/lib/skill-block";
 import { s } from "./styles";
 
 /**

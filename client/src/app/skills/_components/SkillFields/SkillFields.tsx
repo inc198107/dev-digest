@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { FormField, SelectInput, Textarea, TextInput } from "@devdigest/ui";
 import type { SkillType } from "@devdigest/shared";
 import { SKILL_TYPES } from "../../../../components/skill-meta";
-import { estimateTokens, formatSkillBlock } from "../SkillBlockPreview";
+import { estimateTokens, formatSkillBlock } from "@/lib/skill-block";
 import type { SkillFormValue } from "./helpers";
 import { s } from "./styles";
 

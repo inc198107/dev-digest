@@ -22,6 +22,7 @@
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
 - 2026-11-21 · scripts/e2e.sh · Check `e2e/node_modules` and a global `agent-browser` BEFORE running the script — it boots Postgres + API + web (~1 min) and only then runs `cd e2e && npm test`, which fails with `"tsx" is not recognized as an internal or external command` (garbled cp866 on a RU-locale console) when e2e deps are missing; fix: `cd e2e && npm install`, plus `npm i -g agent-browser && agent-browser install`.
+- 2026-11-27 · `scripts/e2e.sh` while `./scripts/dev.sh` runs · Restart the dev web server (`next dev` :3000) after an e2e run — e2e.sh starts a second `next dev` in the same `client/` folder (shared `.next`), and afterwards :3000 served `200` pages whose route chunks were `404` (`/_next/static/chunks/app/agents/%5Bid%5D/page.js`), so pages stayed on their skeleton with no console error; touching the page file did not bring the chunk back.
 
 ## Session Notes
 <!-- Dated session summaries: what was done, what was learned. -->

@@ -14,6 +14,7 @@
 ## Codebase Patterns
 <!-- Conventions and architectural decisions not stated in CLAUDE.md or README.md. -->
 - 2026-11-22 · [number]/_components/SeverityCounters, `SeverityBadge` · Query severity labels in tests by their DOM text ("2 Critical", "Critical") — the upper case ("CRITICAL") is only CSS `textTransform`, so `getByText("CRITICAL")` / `{ name: "2 CRITICAL" }` find nothing.
+- 2026-11-25 · src/vendor/shared · Mirror every change to `@devdigest/shared` in both copies (server/src/vendor/shared is canonical) — the onion PostToolUse hook and `check-shared-parity.mjs` fail on drift not recorded in `server/.shared-parity-known.json` (4 files already drift: `adapters.ts`, `contracts/{knowledge,eval-ci,productionize}.ts`); identical additions to both copies pass, and after syncing a drifted file refresh the baseline with `node .claude/skills/onion-architecture/scripts/check-shared-parity.mjs --update-baseline` — but only after removing drift: the refresh records *all* current drift, so check that `git diff server/.shared-parity-known.json` only deletes lines; a new entry needs the user's agreement.
 - 2026-11-21 · [number]/_components/RunHistory/RunHistory.tsx, RunTraceDrawer/TraceBody · The "{tok} tok · $cost" timeline line (commit `58c6ac7`) and the COST trace stat (`d45ab0d`) were removed on purpose for the L01 lab — not regressions; `git show` those commits to see the removed markup.
 
 ## Tool & Library Notes

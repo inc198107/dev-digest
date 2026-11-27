@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: new-nextjs-app-data-layer
+expected_outcome: |
+  One configured HTTP client lives in lib/. The projects fetchers parse responses with Zod and
+  sit with a per-feature queryOptions factory in the projects feature (no global query-keys
+  file). The create-project mutation lives in the feature's data layer and invalidates the
+  projects queries; UI side effects stay at the call site. The base URL is a public
+  NEXT_PUBLIC_ value only if the browser needs it; the internal token never gets a
+  NEXT_PUBLIC_ prefix and is read only in server-only code. Types come from z.infer. Filter,
+  sort and page state live in URL search params through a typed parser. The page stays thin.

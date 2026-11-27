@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: reuse-existing-design-tokens
+expected_outcome: |
+  Before proposing a new file, the answer searches the codebase and finds that the design
+  system already exports a severity map (SEV in src/vendor/ui/primitives/tokens.ts, imported
+  from @devdigest/ui), and recommends reusing it from both places. It does not create a second
+  severity-to-colour constant and does not make one feature import the map from another
+  feature's internal folder.

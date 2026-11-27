@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: rule-in-legacy-module
+expected_outcome: |
+  The answer follows the agents reference module rather than the reviews module's legacy
+  patterns. The "running runs can't be deleted" decision becomes a pure domain function
+  (reviews/domain.ts) with unit tests and no database. The use case loads the run through a port,
+  applies the rule, throws a typed application error (a conflict AppError subclass) that the
+  central handler maps to 409, and performs the review delete and the run delete in one
+  transaction it owns through a unit-of-work port; the repository only deletes. It notices that the
+  two deletes currently run without a transaction and that ReviewService takes the whole Container,
+  and handles that in a scoped way (narrow deps for the touched flow or a listed follow-up) instead
+  of refactoring the whole reviews module. It runs the boundary check.

@@ -10,11 +10,15 @@ pnpm typecheck
 pnpm db:migrate · pnpm db:seed · pnpm db:generate # generate after editing db/schema/*.ts
 pnpm exec vitest run --exclude '**/*.it.test.ts'  # unit, hermetic
 pnpm exec vitest run .it.test                     # integration (testcontainers, needs Docker)
+bash ../.claude/skills/onion-architecture/scripts/check-boundaries.sh  # onion rings + conventions + shared parity
 ```
 
 ## Layout
-- `src/modules/<name>/` — `routes.ts` (Fastify plugin) → `service.ts` → `repository.ts`,
-  plus `constants.ts` / `helpers.ts`
+Onion Architecture: dependencies point inward only (skill `onion-architecture`, rings defined in
+`.onion-rings.cjs`). Reference module: `src/modules/agents/`.
+- `src/modules/<name>/` — `routes.ts` + `schemas.ts` (http) → `service.ts` + `ports.ts`
+  (application) → `domain.ts` + `constants.ts` (domain); `repository.ts` (infrastructure)
+  implements the ports. New modules: `node ../.claude/skills/onion-architecture/scripts/new-module.mjs <name>`
 - `src/platform/` — `container.ts` (DI root), `jobs.ts` (JobRunner), `sse.ts` (RunBus),
   `config.ts`, `errors.ts`
 - `src/adapters/` — port implementations (github, git, llm, astgrep, secrets…); `mocks.ts` for tests
@@ -27,9 +31,18 @@ pnpm exec vitest run .it.test                     # integration (testcontainers,
 - Routes use `app.withTypeProvider<ZodTypeProvider>()` with params/body schemas from
   `@devdigest/shared`; invalid input becomes 422 before the handler runs.
 - Call `getContext(container, req)` in every handler and scope queries by `workspaceId`.
-- Take dependencies from `container` (`container.git`, `await container.llm(id)`,
-  `container.repoIntel`…); never `new` an adapter inside a service. Tests inject
-  replacements via `ContainerOverrides`.
+- `platform/container.ts` is the composition root: only it constructs adapters and
+  repositories. The routes plugin builds the use case from container getters and passes it
+  narrow ports (`new AgentsService({ store: container.agentsRepo, uow: container.agentsUow, … })`).
+  New services never take the whole `Container` and never `new` a repository or adapter. Use-case
+  tests pass fakes to the constructor; HTTP tests use `ContainerOverrides`.
+- Several writes in one operation run in one transaction owned by the use case through a
+  unit-of-work port (`DrizzleAgentsUnitOfWork`); never call HTTP or the LLM inside it.
+- Drizzle rows never leave repositories: map to contract shapes there. New routes declare a
+  `response` schema.
+- Run the onion check after backend changes; a PostToolUse hook also runs it after edits. Never
+  add a new violation to a baseline (`.dependency-cruiser-known-violations.json`,
+  `.onion-conventions-known.json`, `.shared-parity-known.json`) without the user's agreement.
 - Throw `AppError` subclasses (`NotFoundError`, `ValidationError`, `ConfigError`,
   `ExternalServiceError`); the global handler builds the `{ error: { code, message } }` envelope.
 - SQL belongs in repositories. `modules/pulls` and `modules/polling` keep SQL inline in
@@ -52,6 +65,7 @@ pnpm exec vitest run .it.test                     # integration (testcontainers,
 - Seed fixtures (`acme/payments-api`, PR #482, built-in agents): e2e and integration tests rely on them.
 
 ## Read when
+- You add, move or review backend code → skill `onion-architecture` (rings, checks, known debt)
 - You add or change a route → `README.md` (API map, request & DI flow)
 - You change review inputs (repo map, callers, PR body) → `README.md#review-context-non-obvious`
 - You touch indexing or repo-intel data → `src/modules/repo-intel/README.md`

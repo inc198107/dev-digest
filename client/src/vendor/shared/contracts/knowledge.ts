@@ -191,3 +191,59 @@ export const AgentSkillLink = z.object({
   order: z.number().int(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+/** Request bodies of the agents API: POST /agents, PUT /agents/:id, POST /agents/:id/skills. */
+export const AgentCreateBody = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  provider: Provider,
+  model: z.string().min(1),
+  system_prompt: z.string().min(1),
+  output_schema: z.unknown().optional(),
+  strategy: ReviewStrategy.optional(),
+  ci_fail_on: CiFailOn.optional(),
+  repo_intel: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+export type AgentCreateBody = z.infer<typeof AgentCreateBody>;
+
+export const AgentUpdateBody = AgentCreateBody.partial();
+export type AgentUpdateBody = z.infer<typeof AgentUpdateBody>;
+
+/** Replace the whole ordered set of linked skills; each skill at most once. */
+export const AgentSkillsSetBody = z
+  .object({
+    skill_ids: z
+      .array(z.string().uuid())
+      .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
+        message: 'skill_ids must be unique',
+      }),
+  })
+  .strict();
+export type AgentSkillsSetBody = z.infer<typeof AgentSkillsSetBody>;
+
+/** Largest value of a Postgres `integer` column (`agent_skills.order`). */
+const PG_INT_MAX = 2_147_483_647;
+
+/** Link one skill, appended unless a position is given. */
+export const AgentSkillLinkBody = z
+  .object({
+    skill_id: z.string().uuid(),
+    order: z.number().int().nonnegative().max(PG_INT_MAX).optional(),
+  })
+  .strict();
+export type AgentSkillLinkBody = z.infer<typeof AgentSkillLinkBody>;
+
+/**
+ * POST /agents/:id/skills: either replace the whole ordered set (`skill_ids`) or link one
+ * skill (`skill_id`). Both objects are strict, so a body that mixes them is rejected.
+ */
+export const AgentSkillsBody = z.union([AgentSkillsSetBody, AgentSkillLinkBody], {
+  errorMap: (issue, ctx) => ({
+    message:
+      issue.code === 'invalid_union'
+        ? 'Provide skill_ids (set/reorder) or skill_id (link one), not both'
+        : ctx.defaultError,
+  }),
+});
+export type AgentSkillsBody = z.infer<typeof AgentSkillsBody>;

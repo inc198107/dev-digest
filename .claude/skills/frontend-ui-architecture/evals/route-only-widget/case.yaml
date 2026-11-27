@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: route-only-widget
+expected_outcome: |
+  The answer follows the client's documented conventions (client/CLAUDE.md) instead of
+  inventing a new structure. The component goes into a route-private folder
+  app/repos/[repoId]/pulls/[number]/_components/RunTimeline/ with its own test next to it.
+  Runs are loaded through a hook in src/lib/hooks (reused or extended), never with fetch in
+  the component. Labels go to a messages/en/*.json namespace via useTranslations. The answer
+  notices the existing formatSeconds in the sibling RunTraceDrawer/helpers.ts and, since it
+  would now have two consumers, promotes it to a shared place instead of importing a
+  sibling's internals (or keeps a new formatter in the component's own helpers.ts). No
+  generic utils file and no features/ folder are introduced.

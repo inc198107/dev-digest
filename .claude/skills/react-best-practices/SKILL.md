@@ -1,6 +1,6 @@
 ---
 name: react-best-practices
-description: "Modern React best practices and anti-pattern catalog (2025-26). Use when writing, reviewing, or refactoring React components, hooks, and state management. Covers component design, state patterns, hooks misuse, performance, data fetching, and code organization."
+description: "Modern React best practices and anti-pattern catalog (2025-26). Use when writing, reviewing, or refactoring React components, hooks, and state management. Covers component design, state patterns, hooks misuse, performance and data fetching. Where files and folders live is covered by frontend-ui-architecture."
 ---
 
 # React Best Practices & Anti-Patterns
@@ -107,8 +107,7 @@ New arrays, objects, and functions created inline in JSX props break `React.memo
 
 ## Data Fetching (HIGH)
 
-- ALL data fetching in custom hooks, never in component bodies
-- Use the project's `useApiQuery`/`useApiMutation` core hooks
+- ALL data fetching goes through the project's data layer (query hooks / `queryOptions`), never `fetch` in component bodies — where that layer lives: `frontend-ui-architecture`
 - Handle loading, error, and empty states in the container component
 - Use try-catch in async functions within hooks
 
@@ -117,7 +116,7 @@ New arrays, objects, and functions created inline in JSX props break `React.memo
 - Use utility classes for all styling — no inline `style={}` objects
 - Use responsive prefixes (`sm:`, `md:`, `lg:`) for responsive design
 - Extract repeated class combinations into reusable components (Button, Card, Badge)
-- Prefer the project's `components/ui/` over recreating common elements
+- Prefer the project's existing shared UI components over recreating common elements (where they live: `frontend-ui-architecture`)
 
 ## Error Boundaries (HIGH)
 
@@ -166,9 +165,8 @@ New arrays, objects, and functions created inline in JSX props break `React.memo
 
 ## Code Organization (MEDIUM)
 
-### Feature-Based Structure
-- Colocate component + hook + helpers + tests per feature
-- Shared utilities go in `utils/` or `components/ui/`
+Where code lives — folders, component placement and splitting, hooks, constants, utils/helpers/lib,
+data layer, import boundaries — is covered by the `frontend-ui-architecture` skill.
 
 ### File Quality
 - Order: imports, constants, helpers, component, exports

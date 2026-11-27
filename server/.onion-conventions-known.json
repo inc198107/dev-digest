@@ -1,0 +1,287 @@
+[
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/polling/routes.ts",
+    "text": "app.post('/repos/:id/poll', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/pulls/routes.ts",
+    "text": "app.get('/repos/:id/pulls', { schema: { params: IdParams } }, async (req): Promise<PrMeta[]> => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/pulls/routes.ts",
+    "text": "app.get('/pulls/:id', { schema: { params: IdParams } }, async (req): Promise<PrDetail> => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/pulls/routes.ts",
+    "text": "app.get("
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/pulls/routes.ts",
+    "text": "app.post("
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/full.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/pipeline/incremental.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/repo-intel/routes.ts",
+    "text": "app.get("
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/repo-intel/routes.ts",
+    "text": "app.post("
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/service.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/service.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/repo-intel/service.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "service-takes-narrow-deps",
+    "file": "src/modules/repo-intel/service.ts",
+    "text": "private container: Container"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/repos/routes.ts",
+    "text": "app.post('/repos', { schema: { body: RepoInput } }, async (req, reply) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/repos/routes.ts",
+    "text": "app.get('/repos', async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/repos/routes.ts",
+    "text": "app.post('/repos/:id/refresh', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/repos/routes.ts",
+    "text": "app.delete('/repos/:id', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "service-takes-narrow-deps",
+    "file": "src/modules/repos/service.ts",
+    "text": "private container: Container"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.post("
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.get("
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.get('/pulls/:id/runs/active', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.get('/pulls/:id/runs', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.delete('/runs/:id', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.post('/runs/:id/cancel', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.get('/runs/:id/trace', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.get('/pulls/:id/reviews', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/reviews/routes.ts",
+    "text": "app.post(`/findings/:id/${action}`, { schema: { params: IdParams } }, async (req) => {"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "Date.now()"
+  },
+  {
+    "rule": "service-takes-narrow-deps",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "private container: Container"
+  },
+  {
+    "rule": "service-takes-narrow-deps",
+    "file": "src/modules/reviews/run-executor.ts",
+    "text": "private agents: Container['agentsRepo']"
+  },
+  {
+    "rule": "core-no-ambient-io",
+    "file": "src/modules/reviews/service.ts",
+    "text": "randomUUID()"
+  },
+  {
+    "rule": "service-takes-narrow-deps",
+    "file": "src/modules/reviews/service.ts",
+    "text": "private container: Container"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/settings/routes.ts",
+    "text": "app.get('/settings', async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/settings/routes.ts",
+    "text": "app.get('/settings/secrets-status', async (req): Promise<SecretsStatus> => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/settings/routes.ts",
+    "text": "app.put('/settings', { schema: { body: SettingsUpdate } }, async (req) => {"
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/settings/routes.ts",
+    "text": "app.post("
+  },
+  {
+    "rule": "route-declares-response",
+    "file": "src/modules/workspace/routes.ts",
+    "text": "app.get('/workspace', async (req) => {"
+  }
+]

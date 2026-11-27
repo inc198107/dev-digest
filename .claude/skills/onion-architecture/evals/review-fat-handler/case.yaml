@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: review-fat-handler
+expected_outcome: |
+  The review maps every problem to an onion ring and proposes a split: a thin route with Zod
+  params/body/response schemas, a refund use case that receives an orders repository port, a
+  payment gateway port and a transaction port, a pure refundability rule that takes "now" as an
+  argument, a Drizzle repository that maps rows, and a Stripe adapter built in the composition
+  root with the key from the SecretsProvider. It notes that the two writes need one transaction
+  owned by the use case, and that the external refund cannot be rolled back with the database, so
+  it has to be ordered and made idempotent. Errors are thrown as typed application errors for the
+  central handler. It stays within the endpoint and does not propose rewriting other modules.

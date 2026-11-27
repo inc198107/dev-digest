@@ -1,186 +1,235 @@
-import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentCreateBody,
   AgentSkillLink,
+  AgentUpdateBody,
   AgentVersion,
-  CiFailOn,
   ModelInfo,
   Provider,
-  ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
-import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { ValidationError } from '../../platform/errors.js';
+import { INITIAL_AGENT_VERSION } from './constants.js';
+import { nextSkillOrder, planVersion, unknownSkillIds } from './domain.js';
+import type { AgentsStore, AgentsUnitOfWork, ListModels } from './ports.js';
 
 /**
- * A2 — agents service. Business logic for the Agents tab + Agent Editor.
- * Provider/model selection uses the LLM adapter's dynamic model list.
- *
- * An Agent = provider + model + system_prompt + linked skills + output_schema +
- * enabled. Config changes are versioned via `agent_versions` (repository).
+ * Agents use cases (application ring) for the Agents tab and the Agent Editor.
+ * An agent = provider + model + system prompt + linked skills + output schema +
+ * enabled flag; config changes are versioned as immutable snapshots.
  */
 
-// Re-exported for backwards compatibility; implementation lives in ./helpers.
-export { toAgentDto } from './helpers.js';
-
-export interface CreateAgentInput {
-  name: string;
-  description?: string;
-  provider: Provider;
-  model: string;
-  system_prompt: string;
-  output_schema?: unknown;
-  strategy?: ReviewStrategy;
-  ci_fail_on?: CiFailOn;
-  repo_intel?: boolean;
-  enabled?: boolean;
-}
-
-export interface UpdateAgentInput {
-  name?: string;
-  description?: string;
-  provider?: Provider;
-  model?: string;
-  system_prompt?: string;
-  output_schema?: unknown;
-  strategy?: ReviewStrategy;
-  ci_fail_on?: CiFailOn;
-  repo_intel?: boolean;
-  enabled?: boolean;
+/** What the agents use cases need from the outside, injected by the routes plugin. */
+export interface AgentsServiceDeps {
+  /** Non-transactional reads and single-statement writes. */
+  store: AgentsStore;
+  /** Atomic multi-statement writes. */
+  uow: AgentsUnitOfWork;
+  /** Model catalogue of a provider. */
+  listModels: ListModels;
 }
 
 export class AgentsService {
-  private repo: AgentsRepository;
+  /**
+   * @param deps Ports this service depends on.
+   */
+  constructor(private readonly deps: AgentsServiceDeps) {}
 
-  constructor(private container: Container) {
-    this.repo = new AgentsRepository(container.db);
-  }
-
-  async list(workspaceId: string): Promise<Agent[]> {
-    const rows = await this.repo.list(workspaceId);
-    return rows.map(toAgentDto);
-  }
-
-  async get(workspaceId: string, id: string): Promise<Agent | undefined> {
-    const row = await this.repo.getById(workspaceId, id);
-    return row ? toAgentDto(row) : undefined;
-  }
-
-  /** Delete an agent (and its versions/skill-links, via cascade). */
-  async delete(workspaceId: string, id: string): Promise<boolean> {
-    return this.repo.deleteById(workspaceId, id);
-  }
-
-  async create(workspaceId: string, input: CreateAgentInput, userId?: string): Promise<Agent> {
-    const row = await this.repo.insert({
-      workspaceId,
-      name: input.name,
-      description: input.description,
-      provider: input.provider,
-      model: input.model,
-      systemPrompt: input.system_prompt,
-      outputSchema: input.output_schema,
-      ...(input.strategy !== undefined ? { strategy: input.strategy } : {}),
-      ...(input.ci_fail_on !== undefined ? { ciFailOn: input.ci_fail_on } : {}),
-      ...(input.repo_intel !== undefined ? { repoIntel: input.repo_intel } : {}),
-      enabled: input.enabled,
-      createdBy: userId ?? null,
-    });
-    return toAgentDto(row);
-  }
-
-  async update(
-    workspaceId: string,
-    id: string,
-    patch: UpdateAgentInput,
-  ): Promise<Agent | undefined> {
-    const row = await this.repo.update(workspaceId, id, {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.description !== undefined ? { description: patch.description } : {}),
-      ...(patch.provider !== undefined ? { provider: patch.provider } : {}),
-      ...(patch.model !== undefined ? { model: patch.model } : {}),
-      ...(patch.system_prompt !== undefined ? { systemPrompt: patch.system_prompt } : {}),
-      ...(patch.output_schema !== undefined ? { outputSchema: patch.output_schema } : {}),
-      ...(patch.strategy !== undefined ? { strategy: patch.strategy } : {}),
-      ...(patch.ci_fail_on !== undefined ? { ciFailOn: patch.ci_fail_on } : {}),
-      ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
-      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-    });
-    return row ? toAgentDto(row) : undefined;
+  /**
+   * @param workspaceId Tenant scope.
+   * @returns Every agent in the workspace.
+   */
+  list(workspaceId: string): Promise<Agent[]> {
+    return this.deps.store.list(workspaceId);
   }
 
   /**
-   * Config history for an agent, newest version first. Workspace-scoped: returns
-   * undefined when the agent isn't in this workspace (the route maps that to 404)
-   * so version snapshots can't be read across tenants.
+   * @param workspaceId Tenant scope.
+   * @param id Agent id.
+   * @returns The agent, or undefined (route → 404).
+   */
+  get(workspaceId: string, id: string): Promise<Agent | undefined> {
+    return this.deps.store.get(workspaceId, id);
+  }
+
+  /**
+   * Delete an agent; its versions and skill links cascade.
+   * @param workspaceId Tenant scope.
+   * @param id Agent id.
+   * @returns False when no such agent existed.
+   */
+  delete(workspaceId: string, id: string): Promise<boolean> {
+    return this.deps.store.delete(workspaceId, id);
+  }
+
+  /**
+   * Create an agent and record its first config snapshot in one transaction.
+   * @param workspaceId Tenant scope.
+   * @param input The new agent.
+   * @param userId Creator, when known.
+   * @returns The created agent.
+   */
+  create(workspaceId: string, input: AgentCreateBody, userId?: string): Promise<Agent> {
+    return this.deps.uow.run(async (store) => {
+      const agent = await store.insert(
+        workspaceId,
+        { ...input, createdBy: userId ?? null },
+        INITIAL_AGENT_VERSION,
+      );
+      await store.snapshotVersion(workspaceId, agent.id, INITIAL_AGENT_VERSION);
+      return agent;
+    });
+  }
+
+  /**
+   * Update an agent. A config change (anything but `enabled`) bumps the version
+   * and snapshots the new config; the decision is the pure `planVersion` rule.
+   * The agent row stays locked from the read to the commit, so concurrent updates
+   * cannot plan the same version or write back a stale one.
+   * @param workspaceId Tenant scope.
+   * @param id Agent id.
+   * @param patch Fields to change.
+   * @returns The updated agent, or undefined (route → 404).
+   */
+  update(workspaceId: string, id: string, patch: AgentUpdateBody): Promise<Agent | undefined> {
+    return this.deps.uow.run(async (store) => {
+      const existing = await store.getForUpdate(workspaceId, id);
+      if (!existing) return undefined;
+      const plan = planVersion(existing, patch);
+      if (!plan.bump) return store.update(workspaceId, id, patch);
+      const updated = await store.update(workspaceId, id, patch, plan.version);
+      if (updated) await store.snapshotVersion(workspaceId, id, plan.version);
+      return updated;
+    });
+  }
+
+  /**
+   * Config history, newest first. Workspace-scoped so snapshots can't be read
+   * across tenants.
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @returns The versions, or undefined when the agent is not in this workspace.
    */
   async listVersions(workspaceId: string, agentId: string): Promise<AgentVersion[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    const rows = await this.repo.listVersions(agentId);
-    return rows.map(toAgentVersionDto);
+    if (!(await this.deps.store.get(workspaceId, agentId))) return undefined;
+    return this.deps.store.listVersions(agentId);
   }
 
   /**
-   * A single config snapshot for an agent. Returns undefined when the agent isn't
-   * in this workspace OR that version was never recorded (route → 404).
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @param version Version number.
+   * @returns The snapshot, or undefined when the agent or version is unknown.
    */
   async getVersion(
     workspaceId: string,
     agentId: string,
     version: number,
   ): Promise<AgentVersion | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    const row = await this.repo.getVersion(agentId, version);
-    return row ? toAgentVersionDto(row) : undefined;
-  }
-
-  /** Linked skills for an agent as AgentSkillLink[] (ordered). */
-  async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
-    const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    if (!(await this.deps.store.get(workspaceId, agentId))) return undefined;
+    return this.deps.store.getVersion(agentId, version);
   }
 
   /**
-   * Set / reorder the agent's linked skills. If `skillIds` is provided, replaces
-   * the whole set in that order. Returns the resulting ordered links.
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @returns Linked skills in order, or undefined when the agent is not in this workspace.
    */
-  async setSkills(
+  async skillLinks(workspaceId: string, agentId: string): Promise<AgentSkillLink[] | undefined> {
+    if (!(await this.deps.store.get(workspaceId, agentId))) return undefined;
+    return this.deps.store.skillLinks(agentId);
+  }
+
+  /**
+   * Replace the agent's linked skills with `skillIds`, in that order. Runs in one unit of work
+   * with the agent row locked, so concurrent edits of the same agent's skills serialize.
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @param skillIds Skill ids in their new order; all must be skills of this workspace.
+   * @returns The resulting links, or undefined when the agent is not in this workspace.
+   * @throws ValidationError when a skill id is not a skill of this workspace.
+   */
+  setSkills(
     workspaceId: string,
     agentId: string,
     skillIds: string[],
   ): Promise<AgentSkillLink[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    await this.repo.setSkills(agentId, skillIds);
-    return this.skillLinks(agentId);
+    return this.deps.uow.run(async (store) => {
+      if (!(await store.getForUpdate(workspaceId, agentId))) return undefined;
+      await this.assertKnownSkills(store, workspaceId, skillIds);
+      await store.replaceSkills(agentId, skillIds);
+      return store.skillLinks(agentId);
+    });
   }
 
-  /** Link a single skill (append or set order) — additive to existing links. */
-  async linkSkill(
+  /**
+   * Link one skill (appended unless an order is given); additive to existing links. Runs in
+   * one unit of work with the agent row locked, so concurrent appends get distinct positions.
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @param skillId Skill id; must be a skill of this workspace.
+   * @param order Requested position.
+   * @returns The resulting links, or undefined when the agent is not in this workspace.
+   * @throws ValidationError when the skill is not a skill of this workspace.
+   */
+  linkSkill(
     workspaceId: string,
     agentId: string,
     skillId: string,
     order?: number,
   ): Promise<AgentSkillLink[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    const existing = await this.repo.linkedSkills(agentId);
-    const resolvedOrder = order ?? existing.length;
-    await this.repo.linkSkill(agentId, skillId, resolvedOrder);
-    return this.skillLinks(agentId);
+    return this.deps.uow.run(async (store) => {
+      if (!(await store.getForUpdate(workspaceId, agentId))) return undefined;
+      await this.assertKnownSkills(store, workspaceId, [skillId]);
+      const linked = await store.skillLinks(agentId);
+      await store.linkSkill(agentId, skillId, nextSkillOrder(linked.length, order));
+      return store.skillLinks(agentId);
+    });
   }
 
   /**
-   * Dynamic model list from the provider adapter's /models. Degrades gracefully
-   * to [] if the provider key is not configured (the editor still renders).
+   * Reject skill ids that are not skills of the workspace (another tenant's or unknown).
+   * @param store Transaction-bound store.
+   * @param workspaceId Tenant scope.
+   * @param skillIds Requested skill ids.
+   * @returns Resolves when every id is known.
+   * @throws ValidationError listing the unknown ids.
+   */
+  private async assertKnownSkills(
+    store: AgentsStore,
+    workspaceId: string,
+    skillIds: string[],
+  ): Promise<void> {
+    if (skillIds.length === 0) return;
+    const unknown = unknownSkillIds(skillIds, await store.knownSkillIds(workspaceId, skillIds));
+    if (unknown.length > 0) {
+      throw new ValidationError(`Unknown skill id(s): ${unknown.join(', ')}`, { skill_ids: unknown });
+    }
+  }
+
+  /**
+   * Dynamic model list of a provider. Degrades to [] when the provider key is not
+   * configured, so the editor still renders.
+   * @param provider Provider id.
+   * @returns Its models, or [].
    */
   async listModels(provider: Provider): Promise<ModelInfo[]> {
     try {
-      const llm = await this.container.llm(provider);
-      return await llm.listModels();
+      return await this.deps.listModels(provider);
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Model list of the agent's current provider.
+   * @param workspaceId Tenant scope.
+   * @param agentId Agent id.
+   * @returns Its provider's models (or [] when the provider fails), or undefined when the
+   *   agent is not in this workspace.
+   */
+  async modelsForAgent(workspaceId: string, agentId: string): Promise<ModelInfo[] | undefined> {
+    const agent = await this.deps.store.get(workspaceId, agentId);
+    if (!agent) return undefined;
+    return this.listModels(agent.provider);
   }
 }

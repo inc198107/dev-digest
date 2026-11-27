@@ -1,0 +1,6 @@
+#!/bin/sh
+# pr-self-review gate: blocks a push whose content was not self-reviewed, changed after the
+# review, or has unresolved critical findings. Installed with
+#   node .claude/skills/pr-self-review/scripts/install-hooks.mjs
+# Bypass (your responsibility): git push --no-verify
+exec node "$(git rev-parse --show-toplevel)/.claude/skills/pr-self-review/scripts/gate.mjs" --pre-push "$@"

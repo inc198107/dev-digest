@@ -73,7 +73,7 @@ flowchart TB
   end
   subgraph Agents["Agents & Skills Lab"]
     agents["agents<br/>/agents · /agents/:id · /agents/:id/skills"]
-    skills["skills<br/>/skills · /skills/:id · /skills/:id/versions(/:version/restore)<br/>/skills/import/(file|url) (preview only)"]
+    skills["skills<br/>/skills · /skills/:id · /skills/:id/versions(/:version/restore)<br/>/skills/stats · /skills/:id/stats · /skills/community?q=<br/>/skills/import/(file|url) (preview only)"]
     conventions["conventions<br/>/repos/:id/conventions(/extract|/accepted) · /conventions/:id"]
   end
   subgraph Intel["Repo intelligence"]
@@ -141,11 +141,22 @@ What the reviewer actually sends to the model is assembled in
   only preview: the zip reader unpacks the `SKILL.md` core in memory under a byte cap,
   lists every other entry (scripts as `executable`) and never writes or runs one; the
   URL fetcher is https-only with an SSRF guard at connect time. See `../specs/skills.md`.
+- **Skill stats and versions.** `GET /skills/:id/stats` (and the card summary `GET /skills/stats`)
+  count finished review runs of the last 30 days: a run counts for a skill when its trace's
+  `prompt_assembly.skill_blocks` contains the skill; its findings (accepted / dismissed) are
+  attributed to every skill that run loaded. `PUT /skills/:id` takes an optional `note` stored
+  with the version the change creates (`skill_versions.note`, never sent to the model).
+  `GET /skills/community?q=` searches `SKILL.md` files on GitHub with `GITHUB_TOKEN`
+  (`configured: false` without one; 10/min; 502 on GitHub errors); Import goes through the URL
+  import preview.
 - **Conventions are grounded like findings.** `POST /repos/:id/conventions/extract` runs
-  inside the request (two model calls, rate-limited): repo-intel's `getConventionSamples`
-  gives the candidate files, the model picks some (`ConventionFileSelection`), only sampled
-  paths are read from the clone, and every rule the model reports (`ConventionExtraction`)
+  inside the request (ONE model call, rate-limited). Code builds the input: the root config
+  files of a fixed allowlist (ESLint, `tsconfig.json`, Prettier) plus the top 12 files of
+  repo-intel's `getConventionSamples` (≤ 400 lines / 12k chars per file, 15k for all configs,
+  60k in total); the model never picks a path. Every rule it reports (`ConventionExtraction`)
   must cite lines of a file it was shown; the server cuts the snippet from that file itself.
+  409 when the repo is not cloned or not indexed, or no sampled file is readable.
+  `SimpleGitClient.readFile` refuses symlinks, paths that leave the clone and files over 1 MiB.
   The model comes from Settings → Feature models → Conventions. A re-scan keeps accepted
   conventions. "Create skill" saves through `POST /skills` (`source: extracted`,
   `evidence_files`). See `../specs/conventions.md`.

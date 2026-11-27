@@ -25,8 +25,7 @@ editor that mirrors the Agent editor), "Agent Editor · Skills", "Run Trace · P
   - seeded Test Quality Reviewer, three seeded skills and fixture PR #483;
   - an importable example skill;
   - `pr-self-review` becomes manual-only.
-- Out: skill evals, skill stats beyond "Used by", community search, skill extraction from
-  conventions, a per-agent enabled flag on a link (the link itself is the per-agent switch),
+- Out: skill evals, skill extraction from conventions (done separately: `specs/conventions.md`), a per-agent enabled flag on a link (the link itself is the per-agent switch),
   versioning the agent when its links change.
 
 ## Contract changes
@@ -130,6 +129,34 @@ editor that mirrors the Agent editor), "Agent Editor · Skills", "Run Trace · P
 - **Example import.** `docs/examples/skills/flaky-test-patterns/` (`SKILL.md`,
   `references/`, a harmless `scripts/detect-flaky.sh`) and its packed `.zip`.
 
+## Lab finish (L02)
+Plan: `L02-skills-lab-finish-plan.md` (outside the repo). Evals stay out of scope.
+- **Body editor.** `src/components/skill-body-editor/` (promoted from the conventions modal): file
+  header `<name>.md`, an "unsaved" badge, token estimate, line numbers. Used by SkillFields
+  (create, import preview, Config) and the conventions modal.
+- **Version notes.** `PUT /skills/:id` takes an optional `note` (≤ 200 chars, `MAX_SKILL_NOTE_CHARS`);
+  it is stored in `skill_versions.note` (migration `0014`) only when the change creates a version,
+  never written to `skills` and never sent to the model. Restore writes `Restored from v<N>`. A
+  note-only patch is a 422. Config shows a "What changed" field when the draft changes the name,
+  description or body. Versions titles a row with its note and offers **Diff** against the
+  previous version (client LCS line diff, `VersionsTab/line-diff.ts`).
+- **Stats.** `GET /skills/:id/stats` (`SkillStats`) and `GET /skills/stats` (`SkillStatsSummary[]`, one
+  SQL statement for the cards). Window: finished (`done`) review runs of the workspace in the last
+  30 days, by the DB clock. A run counts for a skill when its trace's `prompt_assembly.skill_blocks`
+  contains the skill id. `pull_frequency = skill runs / runs`; `accept_rate = accepted / (accepted +
+  dismissed)` over the findings of those runs; both null when the denominator is 0. A run's
+  findings count for every skill it loaded (the Stats tab says so). Cards show
+  "N agents · X% pull · Y% accept"; the Stats tab shows Used by, Pull frequency, Accept rate,
+  Findings (30d), the agents using the skill and a findings-by-category donut.
+- **Community search.** `GET /skills/community?q=` (2–100 chars, 10/min) searches `SKILL.md` files
+  with GitHub code search using the user's `GITHUB_TOKEN` (SecretsProvider), then reads stars and
+  language per repo (≤ 10 lookups, 10 s deadline, retries off, 10-minute cache). No token →
+  `configured: false` without a network call; GitHub errors → 502. The drawer ("Search community
+  skills…" in Add skill) filters by language and offers tag chips; Import opens the URL import
+  preview with the hit's URL, so the trust banner and explicit save still apply.
+- **Trace race.** `run-executor` saves the run trace before writing the terminal status, so a
+  reader that waits for `done` always finds the trace.
+
 ## Acceptance criteria
 - [x] Skill created and edited in the UI; the version grows; Versions lists the snapshots;
   Restore works (client tests + `skills.it`; editor tabs checked live).
@@ -144,6 +171,12 @@ editor that mirrors the Agent editor), "Agent Editor · Skills", "Run Trace · P
   never found; with the 4 skills 6 and 7 findings (WARNING on production lines: both throws, the
   full-refund branch, the exact-balance and rounding boundaries), score 37/16, the trace shows
   "Skills · 4 skills · +1257 tokens" and one `Skill loaded` log line per skill.
+- [x] Lab finish: version notes over PUT and restore (`skills.it`), stats over seeded runs
+  (`skills-stats.it`), community search with a fake client and without a token
+  (`skills-community-search`, `skills.it`), trace saved before the terminal status (spy test in
+  `reviews-skills.it`; three green integration runs); client: SkillBodyEditor, StatsTab,
+  VersionsTab + `line-diff`, CommunitySearchDrawer, SkillCard usage line; e2e `08-skills` covers
+  the Stats tab and the community drawer.
 - [ ] `pr-self-review` has `disable-model-invocation: true` (done); a manual run routes both
   client and server lanes (run by the user).
 - [x] Tests:

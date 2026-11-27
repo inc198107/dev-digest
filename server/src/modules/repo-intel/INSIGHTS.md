@@ -20,6 +20,7 @@
 
 ## Recurring Errors & Fixes
 <!-- Error message → cause → fix. -->
+- 2026-11-27 · `src/adapters/depgraph/index.ts` `buildEdges` · When ranks look flat, check `repo_index_state.stats.edgesWritten` — on Windows dependency-cruiser read the absolute `D:\…` file paths as globs (backslashes are escapes, Next.js `[id]` a character class), threw ENOENT on a mangled path, the adapter swallowed it and every index ended with 0 edges (dev-digest: 1 distinct rank for 312 files, so `getConventionSamples` returned the first 40 paths alphabetically, all `client/src/app/**`); fixed by cruising `'.'` from `baseDir` (forward slashes) and normalising paths to POSIX: 514 edges, 158 ranks after a full re-index (test `depgraph.test.ts`). (replaces 2026-11-27 Open Question on the skewed conventions sample: answered this session)
 
 ## Session Notes
 <!-- Dated session summaries: what was done, what was learned. -->

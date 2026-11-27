@@ -37,6 +37,7 @@ import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { EXCLUDED_DIRS } from '../modules/repo-intel/constants.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 import { FflateZipReader } from '../adapters/archive/zip.js';
@@ -209,7 +210,7 @@ export class Container {
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */
   get depgraph(): DepGraph {
     if (this.overrides.depgraph) return this.overrides.depgraph;
-    this._depgraph ??= new DepCruiseGraph();
+    this._depgraph ??= new DepCruiseGraph({ excludedDirs: EXCLUDED_DIRS });
     return this._depgraph;
   }
 

@@ -1,6 +1,6 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { join } from 'node:path';
-import { mkdir, readFile, access, rm } from 'node:fs/promises';
+import { join, sep } from 'node:path';
+import { mkdir, readFile, access, rm, lstat, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
   GitClient,
@@ -18,6 +18,9 @@ import { parseUnifiedDiff } from './diff-parser.js';
  * when it isn't, the indexer falls back to a full reindex.
  */
 const RESYNC_FETCH_DEPTH = 50;
+
+/** Largest file `readFile` returns (bytes): repo files feed prompts, never whole blobs. */
+export const MAX_READ_FILE_BYTES = 1024 * 1024;
 
 /**
  * GitClient over simple-git. Repos clone to
@@ -126,8 +129,24 @@ export class SimpleGitClient implements GitClient {
     }));
   }
 
+  /**
+   * Read a text file of the clone. The clone is untrusted content, so the file must be a regular
+   * file (not a symlink, device or folder), its real path must stay inside the clone (no `..`, no
+   * symlinked parent folder), and it must not exceed MAX_READ_FILE_BYTES.
+   * @param repo The clone.
+   * @param path Repo-relative path.
+   * @returns The file's UTF-8 text.
+   * @throws Error when the file is missing, not a regular file, outside the clone or too large.
+   */
   async readFile(repo: RepoRef, path: string): Promise<string> {
-    return readFile(join(this.clonePathFor(repo), path), 'utf8');
+    const root = this.clonePathFor(repo);
+    const full = join(root, path);
+    const stat = await lstat(full);
+    if (!stat.isFile()) throw new Error(`Not a regular file in the clone: ${path}`);
+    if (stat.size > MAX_READ_FILE_BYTES) throw new Error(`File too large to read: ${path}`);
+    const [realRoot, realFile] = await Promise.all([realpath(root), realpath(full)]);
+    if (!realFile.startsWith(realRoot + sep)) throw new Error(`File outside the clone: ${path}`);
+    return readFile(full, 'utf8');
   }
 }
 
